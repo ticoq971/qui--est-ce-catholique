@@ -43,7 +43,7 @@ export default function Lobby({ gameState, playerId, onStart, onLeave }: LobbyPr
                   onClick={onStart}
                   disabled={!canStart}
                 >
-                  {canStart ? 'Commencer la partie' : 'En attente de joueurs (min. 2)'}
+                  {canStart ? 'Choisir les personnages' : 'En attente de joueurs (min. 2)'}
                 </button>
                 {!canStart && (
                   <p className="waiting-msg">Invitez au moins un autre joueur pour commencer.</p>

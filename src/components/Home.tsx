@@ -1,4 +1,8 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
+import { CHARACTERS } from '../data/characters';
+import CharacterEncyclopedia from './CharacterEncyclopedia';
+import CharacterInfoModal from './CharacterInfoModal';
+import type { Character } from '../types';
 
 interface HomeProps {
   onCreate: (name: string) => void;
@@ -14,6 +18,18 @@ export default function Home({ onCreate, onJoin, onPlayVsAI, error, connected }:
   const [aiCount, setAiCount] = useState(1);
   const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'ai'>('menu');
   const [loading, setLoading] = useState(false);
+  const [connectionHelp, setConnectionHelp] = useState(false);
+  const [showEncyclopedia, setShowEncyclopedia] = useState(false);
+  const [infoCharacter, setInfoCharacter] = useState<Character | null>(null);
+
+  useEffect(() => {
+    if (connected) {
+      setConnectionHelp(false);
+      return;
+    }
+    const timer = setTimeout(() => setConnectionHelp(true), 4000);
+    return () => clearTimeout(timer);
+  }, [connected]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -49,8 +65,19 @@ export default function Home({ onCreate, onJoin, onPlayVsAI, error, connected }:
         </header>
 
         {!connected && (
-          <div className="error-msg" style={{ maxWidth: 420, marginBottom: '1rem' }}>
-            Connexion au serveur en cours…
+          <div className="error-msg" style={{ maxWidth: 520, marginBottom: '1rem', textAlign: 'left' }}>
+            {connectionHelp ? (
+              <>
+                <strong>Serveur injoignable.</strong>
+                <p style={{ marginTop: '0.5rem', marginBottom: 0, fontSize: '0.85rem' }}>
+                  Ce jeu nécessite le <strong>serveur Node.js</strong> (Socket.io), pas seulement les fichiers HTML.
+                  Hébergez avec <code>npm run build</code> puis <code>npm start</code> sur Render, Railway ou un VPS.
+                  GitHub Pages seul ne fonctionne pas.
+                </p>
+              </>
+            ) : (
+              'Connexion au serveur en cours…'
+            )}
           </div>
         )}
 
@@ -184,6 +211,23 @@ export default function Home({ onCreate, onJoin, onPlayVsAI, error, connected }:
             <li>Ou affrontez l'IA seul, à votre rythme</li>
           </ul>
         </section>
+
+        <section className="home-encyclopedia">
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => setShowEncyclopedia((v) => !v)}
+          >
+            {showEncyclopedia ? 'Fermer le lexique' : '📖 Découvrir les personnages'}
+          </button>
+          {showEncyclopedia && (
+            <div className="home-encyclopedia-panel">
+              <CharacterEncyclopedia characters={CHARACTERS} onSelect={setInfoCharacter} />
+            </div>
+          )}
+        </section>
+
+        <CharacterInfoModal character={infoCharacter} onClose={() => setInfoCharacter(null)} />
       </div>
     </div>
   );

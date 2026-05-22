@@ -225,12 +225,13 @@ export function onQuestionResolvedForKnowledge(
   attributeKey: AttributeKey,
   answers: Map<string, boolean>,
 ) {
-  const askerKnowledge = getKnowledge(room, askerId);
-  if (askerKnowledge) {
-    applyAnswersToKnowledge(askerKnowledge, attributeKey, answers, askerId);
-    const asker = room.players.get(askerId);
-    if (asker?.isBot) {
-      eliminateForBot(room, askerId, askerKnowledge);
+  for (const playerId of room.playerKnowledge.keys()) {
+    const knowledge = room.playerKnowledge.get(playerId);
+    if (!knowledge) continue;
+    applyAnswersToKnowledge(knowledge, attributeKey, answers, askerId);
+    const player = room.players.get(playerId);
+    if (player?.isBot) {
+      eliminateForBot(room, playerId, knowledge);
     }
   }
 }

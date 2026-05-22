@@ -43,7 +43,7 @@ export interface PendingQuestion {
 
 export interface Room {
   code: string;
-  status: 'waiting' | 'playing' | 'finished';
+  status: 'waiting' | 'selecting' | 'playing' | 'finished';
   isVsAI: boolean;
   players: Map<string, Player>;
   playerOrder: string[];
@@ -110,7 +110,7 @@ function autoAnswerBots(room: Room, pq: PendingQuestion) {
   }
 }
 
-function getPlayerPublic(player: Player): PlayerPublic {
+function getPlayerPublic(player: Player, room: Room): PlayerPublic {
   return {
     id: player.id,
     name: player.name,
@@ -121,13 +121,14 @@ function getPlayerPublic(player: Player): PlayerPublic {
     specialCardsUsed: [...player.specialCardsUsed],
     hasAnswered: false,
     answeredYes: null,
+    hasSelectedCharacter: room.status === 'selecting' ? player.characterId !== null : undefined,
   };
 }
 
 function enrichPlayersPublic(room: Room): PlayerPublic[] {
   return room.playerOrder.map((id) => {
     const p = room.players.get(id)!;
-    const pub = getPlayerPublic(p);
+    const pub = getPlayerPublic(p, room);
     if (room.pendingQuestion && !room.pendingQuestion.blocked) {
       pub.hasAnswered = room.pendingQuestion.answers.has(id);
       pub.answeredYes = room.pendingQuestion.answers.get(id) ?? null;
@@ -166,6 +167,7 @@ export function getGameStatePublic(room: Room): GameStatePublic {
     lastAction: room.lastAction,
     revelationResult: room.revelationResult,
     activeCharacters: [...room.activeCharacterIds],
+    takenCharacterIds: room.status === 'selecting' ? getTakenCharacterIds(room) : undefined,
     questionHistory: [...room.questionHistory],
     aiThinking: room.aiThinking,
   };
@@ -217,11 +219,134 @@ function checkWinner(room: Room): string | null {
   return null;
 }
 
-function assignCharacters(room: Room) {
-  const shuffled = shuffleArray([...room.activeCharacterIds]);
-  room.playerOrder.forEach((playerId, i) => {
-    room.players.get(playerId)!.characterId = shuffled[i];
+function getTakenCharacterIds(room: Room): string[] {
+  return room.playerOrder
+    .map((id) => room.players.get(id)!.characterId)
+    .filter((id): id is string => id !== null);
+}
+
+function prepareBoard(room: Room) {
+  const boardSize = Math.min(CHARACTERS.length, Math.max(24, room.players.size * 8));
+  const minSize = Math.max(boardSize, room.playerOrder.length);
+  room.activeCharacterIds = shuffleArray(CHARACTERS.map((c) => c.id)).slice(0, minSize);
+}
+
+function assignBotCharacters(room: Room) {
+  const taken = new Set(getTakenCharacterIds(room));
+  const available = shuffleArray(room.activeCharacterIds.filter((id) => !taken.has(id)));
+  let i = 0;
+  for (const playerId of room.playerOrder) {
+    const player = room.players.get(playerId)!;
+    if (player.isBot && !player.characterId) {
+      player.characterId = available[i++] ?? null;
+    }
+  }
+}
+
+function allHumansSelected(room: Room): boolean {
+  return [...room.players.values()]
+    .filter((p) => !p.isBot)
+    .every((p) => p.characterId !== null);
+}
+
+function allPlayersHaveCharacters(room: Room): boolean {
+  return room.playerOrder.every((id) => room.players.get(id)!.characterId !== null);
+}
+
+export function beginCharacterSelection(room: Room): boolean {
+  if (room.players.size < 2) return false;
+
+  prepareBoard(room);
+
+  for (const playerId of room.playerOrder) {
+    const player = room.players.get(playerId)!;
+    player.characterId = null;
+    player.eliminated = [];
+    player.guessesCorrect = [];
+    player.canAskSecondQuestion = false;
+    player.canRetryTurn = false;
+    player.specialCards = [];
+    player.specialCardsUsed = [];
+  }
+
+  room.status = 'selecting';
+  room.currentTurnIndex = 0;
+  room.turnNumber = 0;
+  room.winnerId = null;
+  room.pendingQuestion = null;
+  room.questionHistory = [];
+  room.playerKnowledge = new Map();
+  room.aiThinking = false;
+  room.revelationResult = null;
+  room.lastAction = 'Choisissez votre personnage secret !';
+
+  return true;
+}
+
+export function selectCharacter(room: Room, playerId: string, characterId: string): boolean {
+  if (room.status !== 'selecting') return false;
+  if (!room.activeCharacterIds.includes(characterId)) return false;
+
+  const player = room.players.get(playerId);
+  if (!player || player.isBot) return false;
+
+  const takenByOther = room.playerOrder.some((id) => {
+    if (id === playerId) return false;
+    return room.players.get(id)!.characterId === characterId;
   });
+  if (takenByOther) return false;
+
+  player.characterId = characterId;
+  return true;
+}
+
+export function tryBeginPlaying(ctx: ServerContext, room: Room): boolean {
+  if (room.status !== 'selecting') return false;
+  if (!allHumansSelected(room)) return false;
+
+  assignBotCharacters(room);
+
+  if (!allPlayersHaveCharacters(room)) return false;
+
+  return beginPlaying(room, ctx);
+}
+
+function beginPlaying(room: Room, ctx?: ServerContext): boolean {
+  dealSpecialCards(room);
+  initAllPlayerKnowledge(room);
+
+  room.status = 'playing';
+  room.currentTurnIndex = 0;
+  room.turnNumber = 1;
+  room.winnerId = null;
+  room.pendingQuestion = null;
+  room.questionHistory = [];
+  room.aiThinking = false;
+  room.lastAction = `La partie commence ! ${room.players.get(room.playerOrder[0])!.name} commence.`;
+
+  for (const playerId of room.playerOrder) {
+    const player = room.players.get(playerId)!;
+    player.eliminated = [];
+    player.guessesCorrect = [];
+    player.canAskSecondQuestion = false;
+    player.canRetryTurn = false;
+  }
+
+  if (ctx) {
+    broadcastRoom(ctx, room);
+    scheduleAiTurnWithBroadcast(ctx, room);
+  }
+
+  return true;
+}
+
+export function restartGame(room: Room): boolean {
+  if (room.status !== 'finished') return false;
+  return beginCharacterSelection(room);
+}
+
+export function startGame(room: Room): boolean {
+  return beginCharacterSelection(room);
 }
 
 function dealSpecialCards(room: Room) {
@@ -268,37 +393,6 @@ export function scheduleAiTurnWithBroadcast(ctx: ServerContext, room: Room) {
   if (room.aiThinking) {
     broadcastRoom(ctx, room);
   }
-}
-
-export function startGame(room: Room): boolean {
-  if (room.players.size < 2) return false;
-
-  const boardSize = Math.min(CHARACTERS.length, Math.max(24, room.players.size * 8));
-  // Le plateau doit inclure au minimum tous les personnages des joueurs
-  const minSize = Math.max(boardSize, room.playerOrder.length);
-  room.activeCharacterIds = shuffleArray(CHARACTERS.map((c) => c.id)).slice(0, minSize);
-  assignCharacters(room);
-  dealSpecialCards(room);
-  initAllPlayerKnowledge(room);
-
-  room.status = 'playing';
-  room.currentTurnIndex = 0;
-  room.turnNumber = 1;
-  room.winnerId = null;
-  room.pendingQuestion = null;
-  room.questionHistory = [];
-  room.aiThinking = false;
-  room.lastAction = `La partie commence ! ${room.players.get(room.playerOrder[0])!.name} commence.`;
-
-  for (const playerId of room.playerOrder) {
-    const player = room.players.get(playerId)!;
-    player.eliminated = [];
-    player.guessesCorrect = [];
-    player.canAskSecondQuestion = false;
-    player.canRetryTurn = false;
-  }
-
-  return true;
 }
 
 export function createGameContext(io: Server): ServerContext {
@@ -621,6 +715,30 @@ export function addBotsToRoom(room: Room, count: number) {
     room.players.set(bot.id, bot);
     room.playerOrder.push(bot.id);
   }
+}
+
+export function reconnectPlayer(
+  room: Room,
+  playerId: string,
+  socketId: string,
+): boolean {
+  const player = room.players.get(playerId);
+  if (!player || player.isBot) return false;
+  player.socketId = socketId;
+  player.connected = true;
+  return true;
+}
+
+export function removePlayerFromRoom(room: Room, playerId: string): boolean {
+  const player = room.players.get(playerId);
+  if (!player || player.isBot) return false;
+  room.players.delete(playerId);
+  room.playerOrder = room.playerOrder.filter((id) => id !== playerId);
+  if (player.isHost) {
+    const newHost = [...room.players.values()].find((p) => !p.isBot && p.connected);
+    if (newHost) newHost.isHost = true;
+  }
+  return true;
 }
 
 export function createHumanPlayer(socketId: string, name: string, isHost: boolean): Player {

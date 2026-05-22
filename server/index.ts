@@ -11,8 +11,12 @@ import {
   createEmptyRoom,
   createGameContext,
   createHumanPlayer,
-  scheduleAiTurnWithBroadcast,
+  selectCharacter,
+  reconnectPlayer,
+  removePlayerFromRoom,
+  restartGame,
   startGame,
+  tryBeginPlaying,
 } from './gameEngine';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +70,36 @@ io.on('connection', (socket: Socket) => {
     callback({ success: true, ...buildRoomPayload(room, player.id) });
   });
 
+  socket.on('rejoinRoom', (roomCode: string, playerId: string, callback) => {
+    const code = roomCode.toUpperCase().trim();
+    const room = rooms.get(code);
+
+    if (!room) {
+      callback({ success: false, error: 'Partie introuvable.' });
+      return;
+    }
+    if (!reconnectPlayer(room, playerId, socket.id)) {
+      callback({ success: false, error: 'Joueur introuvable dans cette salle.' });
+      return;
+    }
+
+    for (const [sid, pid] of socketToPlayer) {
+      if (pid === playerId && sid !== socket.id) {
+        socketToRoom.delete(sid);
+        socketToPlayer.delete(sid);
+      }
+    }
+
+    socketToRoom.set(socket.id, code);
+    socketToPlayer.set(socket.id, playerId);
+    socket.join(code);
+
+    const player = room.players.get(playerId)!;
+    room.lastAction = `${player.name} s'est reconnecté.`;
+    callback({ success: true, ...buildRoomPayload(room, playerId) });
+    broadcastRoom(ctx, room);
+  });
+
   socket.on('createVsAI', (playerName: string, aiCount: number, callback) => {
     let code = generateRoomCode();
     while (rooms.has(code)) code = generateRoomCode();
@@ -84,7 +118,6 @@ io.on('connection', (socket: Socket) => {
 
     if (startGame(room)) {
       broadcastRoom(ctx, room);
-      scheduleAiTurnWithBroadcast(ctx, room);
       callback({ success: true, ...buildRoomPayload(room, player.id) });
     } else {
       callback({ success: false, error: 'Impossible de démarrer la partie.' });
@@ -133,8 +166,49 @@ io.on('connection', (socket: Socket) => {
 
     if (startGame(room)) {
       broadcastRoom(ctx, room);
-      scheduleAiTurnWithBroadcast(ctx, room);
     }
+  });
+
+  socket.on('selectCharacter', (characterId: string, callback) => {
+    const room = getRoomFromSocket(socket);
+    if (!room) {
+      callback?.({ success: false, error: 'Partie introuvable.' });
+      return;
+    }
+    const playerId = socketToPlayer.get(socket.id)!;
+    if (!selectCharacter(room, playerId, characterId)) {
+      callback?.({ success: false, error: 'Personnage indisponible.' });
+      return;
+    }
+    room.lastAction = `${room.players.get(playerId)!.name} a choisi son personnage.`;
+    broadcastRoom(ctx, room);
+    tryBeginPlaying(ctx, room);
+    callback?.({ success: true });
+  });
+
+  socket.on('restartGame', (callback) => {
+    const room = getRoomFromSocket(socket);
+    if (!room) {
+      callback?.({ success: false, error: 'Partie introuvable.' });
+      return;
+    }
+    const playerId = socketToPlayer.get(socket.id)!;
+    const player = room.players.get(playerId)!;
+    if (!player.isHost) {
+      callback?.({ success: false, error: 'Seul l\'hôte peut relancer la partie.' });
+      return;
+    }
+    if (room.status !== 'finished') {
+      callback?.({ success: false, error: 'La partie n\'est pas terminée.' });
+      return;
+    }
+    if (!restartGame(room)) {
+      callback?.({ success: false, error: 'Impossible de relancer la partie.' });
+      return;
+    }
+    room.lastAction = `${player.name} relance une partie — choisissez vos personnages !`;
+    broadcastRoom(ctx, room);
+    callback?.({ success: true });
   });
 
   socket.on('askQuestion', (attributeKey: import('../src/types').AttributeKey) => {
@@ -232,7 +306,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('leaveRoom', () => {
-    handleDisconnect(socket);
+    handleExplicitLeave(socket);
   });
 
   socket.on('disconnect', () => {
@@ -245,43 +319,66 @@ function getRoomFromSocket(socket: Socket) {
   return code ? rooms.get(code) ?? null : null;
 }
 
+function clearSocketMapping(socket: Socket) {
+  socketToRoom.delete(socket.id);
+  socketToPlayer.delete(socket.id);
+}
+
+function handleExplicitLeave(socket: Socket) {
+  const code = socketToRoom.get(socket.id);
+  const playerId = socketToPlayer.get(socket.id);
+  if (!code || !playerId) return;
+
+  const room = rooms.get(code);
+  if (!room) {
+    clearSocketMapping(socket);
+    return;
+  }
+
+  const player = room.players.get(playerId);
+  if (player && !player.isBot) {
+    removePlayerFromRoom(room, playerId);
+    if (room.players.size === 0) {
+      rooms.delete(code);
+    } else {
+      room.lastAction = `${player.name} a quitté la partie.`;
+      broadcastRoom(ctx, room);
+    }
+  }
+
+  clearSocketMapping(socket);
+}
+
 function handleDisconnect(socket: Socket) {
   const code = socketToRoom.get(socket.id);
   const playerId = socketToPlayer.get(socket.id);
   if (!code || !playerId) return;
 
   const room = rooms.get(code);
-  if (!room) return;
+  if (!room) {
+    clearSocketMapping(socket);
+    return;
+  }
 
   const player = room.players.get(playerId);
-  if (!player || player.isBot) return;
+  if (!player || player.isBot) {
+    clearSocketMapping(socket);
+    return;
+  }
 
   player.connected = false;
+  player.socketId = '';
 
-  if (room.status === 'waiting') {
-    room.players.delete(playerId);
-    room.playerOrder = room.playerOrder.filter((id) => id !== playerId);
-
-    if (room.players.size === 0) {
-      rooms.delete(code);
-    } else {
-      if (player.isHost) {
-        const newHost = [...room.players.values()].find((p) => !p.isBot);
-        if (newHost) newHost.isHost = true;
-      }
-      room.lastAction = `${player.name} a quitté la salle.`;
-      broadcastRoom(ctx, room);
-    }
-  } else {
-    room.lastAction = `${player.name} s'est déconnecté.`;
+  if (room.status !== 'waiting') {
+    room.lastAction = `${player.name} s'est déconnecté (reconnexion possible).`;
     broadcastRoom(ctx, room);
   }
 
-  socketToRoom.delete(socket.id);
-  socketToPlayer.delete(socket.id);
+  clearSocketMapping(socket);
 }
 
-httpServer.listen(PORT, () => {
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`✝ Serveur Qui est-ce ? Catholique sur le port ${PORT}`);
   console.log(`   ${CHARACTERS.length} personnages disponibles`);
+  console.log(`   Mode: ${process.env.NODE_ENV ?? 'development'}`);
 });

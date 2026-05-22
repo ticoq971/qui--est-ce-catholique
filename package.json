@@ -11,6 +11,9 @@
     "start": "tsx server/index.ts",
     "preview": "vite preview"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "express": "^4.21.2",
     "react": "^18.3.1",

@@ -131,11 +131,12 @@ export interface PlayerPublic {
   specialCardsUsed: SpecialCardType[];
   hasAnswered: boolean;
   answeredYes: boolean | null;
+  hasSelectedCharacter?: boolean;
 }
 
 export interface GameStatePublic {
   roomCode: string;
-  status: 'waiting' | 'playing' | 'finished';
+  status: 'waiting' | 'selecting' | 'playing' | 'finished';
   isVsAI?: boolean;
   players: PlayerPublic[];
   currentTurnPlayerId: string | null;
@@ -162,6 +163,7 @@ export interface GameStatePublic {
     forPlayerId: string;
   } | null;
   activeCharacters: string[];
+  takenCharacterIds?: string[];
   questionHistory: QuestionHistoryEntry[];
   aiThinking?: boolean;
 }

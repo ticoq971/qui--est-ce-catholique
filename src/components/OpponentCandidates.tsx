@@ -5,6 +5,7 @@ interface OpponentCandidatesProps {
   candidates: Record<string, string[]>;
   allCharacters: Character[];
   guessedIds: string[];
+  onShowInfo?: (character: Character) => void;
   onQuickGuess?: (targetId: string, characterId: string) => void;
 }
 
@@ -13,6 +14,7 @@ export default function OpponentCandidates({
   candidates,
   allCharacters,
   guessedIds,
+  onShowInfo,
   onQuickGuess,
 }: OpponentCandidatesProps) {
   const charMap = new Map(allCharacters.map((c) => [c.id, c]));
@@ -46,6 +48,16 @@ export default function OpponentCandidates({
                 {remaining.map((char) => (
                   <span key={char.id} className="candidate-chip" title={char.hint}>
                     {char.emoji} {char.name}
+                    {onShowInfo && (
+                      <button
+                        type="button"
+                        className="candidate-chip-info"
+                        onClick={() => onShowInfo(char)}
+                        aria-label={`Infos sur ${char.name}`}
+                      >
+                        ℹ️
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>

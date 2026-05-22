@@ -13,6 +13,8 @@ import SpecialCardsPanel from './SpecialCardsPanel';
 import QuestionHistory from './QuestionHistory';
 import OpponentCandidates from './OpponentCandidates';
 import AnswerPanel from './AnswerPanel';
+import CharacterInfoModal from './CharacterInfoModal';
+import CharacterEncyclopedia from './CharacterEncyclopedia';
 
 interface GameProps {
   gameState: GameStatePublic;
@@ -25,6 +27,7 @@ interface GameProps {
   onUseSpecialCard: (card: SpecialCardType, targetId?: string, attributeKey?: AttributeKey) => void;
   onToggleEliminated: (characterId: string) => void;
   onGuessCharacter: (targetPlayerId: string, characterId: string) => Promise<GuessResult>;
+  onRestart: () => Promise<boolean>;
   onLeave: () => void;
 }
 
@@ -39,6 +42,7 @@ export default function Game({
   onUseSpecialCard,
   onToggleEliminated,
   onGuessCharacter,
+  onRestart,
   onLeave,
 }: GameProps) {
   const [guessModal, setGuessModal] = useState<{ targetId: string; targetName: string } | null>(null);
@@ -50,11 +54,15 @@ export default function Game({
   const [concileStep, setConcileStep] = useState(false);
   const [questionMode, setQuestionMode] = useState<'preset' | 'custom'>('preset');
   const [customQuestion, setCustomQuestion] = useState('');
+  const [infoCharacter, setInfoCharacter] = useState<Character | null>(null);
+  const [showEncyclopedia, setShowEncyclopedia] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   const isMultiplayer = !gameState.isVsAI;
+  const me = gameState.players.find((p) => p.id === playerId)!;
+  const isHost = me.isHost;
 
   const isMyTurn = gameState.currentTurnPlayerId === playerId;
-  const me = gameState.players.find((p) => p.id === playerId)!;
   const opponents = gameState.players.filter((p) => p.id !== playerId);
   const pending = gameState.pendingQuestion;
   const canAsk = isMyTurn && !pending;
@@ -121,6 +129,12 @@ export default function Game({
     setConcileStep(false);
   };
 
+  const handleRestart = async () => {
+    setRestarting(true);
+    await onRestart();
+    setRestarting(false);
+  };
+
   if (gameState.status === 'finished') {
     return (
       <div className="app">
@@ -133,9 +147,23 @@ export default function Game({
                 ? 'L\'IA a identifié tous vos personnages. Retentez votre chance !'
                 : 'Tous les personnages adverses ont été identifiés.'}
             </p>
-            <button className="btn btn-primary" onClick={onLeave}>
-              Retour à l'accueil
-            </button>
+            <div className="victory-actions">
+              {isHost ? (
+                <button className="btn btn-primary" onClick={handleRestart} disabled={restarting}>
+                  {restarting ? 'Relance…' : '🔄 Recommencer'}
+                </button>
+              ) : (
+                <p className="victory-wait-host">En attente que l'hôte relance la partie…</p>
+              )}
+              <button className="btn btn-outline" onClick={onLeave}>
+                Retour à l'accueil
+              </button>
+            </div>
+            {!gameState.isVsAI && (
+              <p className="victory-room-code">
+                Salle <strong>{gameState.roomCode}</strong> — restez connectés pour rejouer ensemble
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -220,18 +248,32 @@ export default function Game({
         <div className="game-layout">
           {/* Left panel */}
           <div className="panel">
-            <h3>Votre personnage secret</h3>
+            <h3 className="panel-section-title">Votre personnage</h3>
             {privateState.characterName && (
-              <div className="my-character">
+              <div className="my-character my-character-compact">
                 <span className="emoji">
                   {allCharacters.find(c => c.id === privateState.characterId)?.emoji ?? '✝'}
                 </span>
-                <h4>{privateState.characterName}</h4>
-                <p>{allCharacters.find(c => c.id === privateState.characterId)?.hint}</p>
+                <div className="my-character-info">
+                  <h4>{privateState.characterName}</h4>
+                  <p>{allCharacters.find(c => c.id === privateState.characterId)?.hint}</p>
+                </div>
+                {privateState.characterId && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline my-character-info-btn"
+                    onClick={() => {
+                      const c = allCharacters.find(ch => ch.id === privateState.characterId);
+                      if (c) setInfoCharacter(c);
+                    }}
+                  >
+                    ℹ️
+                  </button>
+                )}
               </div>
             )}
 
-            <h3>Adversaires</h3>
+            <h3 className="panel-section-title">Adversaires</h3>
             <div className="opponents-tracker">
               {opponents.map((opp) => (
                 <div key={opp.id} className={`opponent-row ${me.guessesCorrect.includes(opp.id) ? 'guessed' : ''}`}>
@@ -239,6 +281,9 @@ export default function Game({
                   <span>
                     {opp.name}
                     {opp.isBot && <span style={{ marginLeft: '0.35rem', opacity: 0.7 }}>🤖</span>}
+                    {!opp.connected && !opp.isBot && (
+                      <span className="opponent-offline" title="Déconnecté"> ⚡</span>
+                    )}
                   </span>
                   {me.guessesCorrect.includes(opp.id) ? (
                     <span className="status">✅ Identifié</span>
@@ -255,12 +300,13 @@ export default function Game({
               ))}
             </div>
 
-            <h3 style={{ marginTop: '1rem' }}>Candidats restants</h3>
+            <h3 className="panel-section-title">Candidats restants</h3>
             <OpponentCandidates
               opponents={opponents}
               candidates={privateState.opponentCandidates ?? {}}
               allCharacters={allCharacters}
               guessedIds={me.guessesCorrect}
+              onShowInfo={setInfoCharacter}
               onQuickGuess={(targetId, characterId) => {
                 const opp = opponents.find((o) => o.id === targetId);
                 if (opp) {
@@ -270,7 +316,7 @@ export default function Game({
               }}
             />
 
-            <h3 style={{ marginTop: '1rem' }}>Cartes spéciales</h3>
+            <h3 className="panel-section-title">Cartes spéciales</h3>
             <SpecialCardsPanel
               cards={privateState.specialCards}
               isMyTurn={isMyTurn}
@@ -331,21 +377,31 @@ export default function Game({
           </div>
 
           {/* Center - character grid */}
-          <div className="panel">
-            <h3>Plateau — éliminez les personnages impossibles</h3>
-            <CharacterGrid
-              characters={allCharacters}
-              eliminated={privateState.eliminated}
-              onToggle={onToggleEliminated}
-            />
+          <div className="panel panel-board">
+            <div className="panel-board-header">
+              <h3 className="panel-section-title">Plateau</h3>
+              <button type="button" className="btn btn-sm btn-outline" onClick={() => setShowEncyclopedia((v) => !v)}>
+                {showEncyclopedia ? 'Fermer le lexique' : '📖 Lexique'}
+              </button>
+            </div>
+            {showEncyclopedia ? (
+              <CharacterEncyclopedia characters={allCharacters} onSelect={setInfoCharacter} />
+            ) : (
+              <CharacterGrid
+                characters={allCharacters}
+                eliminated={privateState.eliminated}
+                onToggle={onToggleEliminated}
+                onShowInfo={setInfoCharacter}
+              />
+            )}
           </div>
 
           {/* Right panel - questions & history */}
-          <div className="panel">
-            <h3>Historique des questions</h3>
+          <div className="panel panel-questions">
+            <h3 className="panel-section-title">Historique</h3>
             <QuestionHistory history={gameState.questionHistory ?? []} playerId={playerId} />
 
-            <h3 style={{ marginTop: '1rem' }}>Poser une question</h3>
+            <h3 className="panel-section-title">Poser une question</h3>
             {!canAsk && !mustAnswer && (
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 {pending ? (mustAnswer ? 'Répondez à la question ci-dessus.' : 'En attente des réponses…') : 'Ce n\'est pas votre tour.'}
@@ -460,14 +516,23 @@ export default function Game({
                     </p>
                     <div className="guess-grid">
                       {candidateChars.map((c) => (
-                        <button
-                          key={c.id}
-                          className={`guess-option probable ${selectedGuess === c.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedGuess(c.id)}
-                        >
-                          <div style={{ fontSize: '1.5rem' }}>{c.emoji}</div>
-                          {c.name}
-                        </button>
+                        <div key={c.id} className="guess-option-wrap">
+                          <button
+                            className={`guess-option probable ${selectedGuess === c.id ? 'selected' : ''}`}
+                            onClick={() => setSelectedGuess(c.id)}
+                          >
+                            <div style={{ fontSize: '1.5rem' }}>{c.emoji}</div>
+                            {c.name}
+                          </button>
+                          <button
+                            type="button"
+                            className="guess-option-info"
+                            onClick={() => setInfoCharacter(c)}
+                            aria-label={`Infos sur ${c.name}`}
+                          >
+                            ℹ️
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </>
@@ -479,14 +544,23 @@ export default function Game({
                     </p>
                     <div className="guess-grid">
                       {otherChars.map((c) => (
-                        <button
-                          key={c.id}
-                          className={`guess-option ${selectedGuess === c.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedGuess(c.id)}
-                        >
-                          <div style={{ fontSize: '1.5rem' }}>{c.emoji}</div>
-                          {c.name}
-                        </button>
+                        <div key={c.id} className="guess-option-wrap">
+                          <button
+                            className={`guess-option ${selectedGuess === c.id ? 'selected' : ''}`}
+                            onClick={() => setSelectedGuess(c.id)}
+                          >
+                            <div style={{ fontSize: '1.5rem' }}>{c.emoji}</div>
+                            {c.name}
+                          </button>
+                          <button
+                            type="button"
+                            className="guess-option-info"
+                            onClick={() => setInfoCharacter(c)}
+                            aria-label={`Infos sur ${c.name}`}
+                          >
+                            ℹ️
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </>
@@ -516,6 +590,8 @@ export default function Game({
         </div>
         );
       })()}
+
+      <CharacterInfoModal character={infoCharacter} onClose={() => setInfoCharacter(null)} />
     </div>
   );
 }

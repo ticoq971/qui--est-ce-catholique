@@ -10,29 +10,94 @@ import type {
   SpecialCardType,
 } from '../types';
 
-const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL?.trim() ||
+  (import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin);
+
+const SESSION_KEY = 'qec-session';
+
+interface StoredSession {
+  roomCode: string;
+  playerId: string;
+}
+
+function loadSession(): StoredSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredSession;
+    if (parsed.roomCode && parsed.playerId) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function saveSession(roomCode: string, playerId: string) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, playerId }));
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
 
 let socket: Socket | null = null;
 
 function getSocket(): Socket {
   if (!socket) {
-    socket = io(SOCKET_URL, { autoConnect: true });
+    socket = io(SOCKET_URL, {
+      autoConnect: true,
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+    });
   }
   return socket;
 }
 
 export function useGameSocket() {
   const [connected, setConnected] = useState(false);
+  const [restoring, setRestoring] = useState(() => !!loadSession());
   const [gameState, setGameState] = useState<GameStatePublic | null>(null);
   const [privateState, setPrivateState] = useState<PlayerPrivate | null>(null);
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const applyPayload = useCallback((payload: RoomJoinedPayload & { success?: boolean }) => {
+    setGameState(payload.gameState);
+    setPrivateState(payload.privateState);
+    setAllCharacters(payload.allCharacters);
+    setPlayerId(payload.playerId);
+    saveSession(payload.gameState.roomCode, payload.playerId);
+  }, []);
+
   useEffect(() => {
     const s = getSocket();
 
-    const onConnect = () => setConnected(true);
+    const onConnect = () => {
+      setConnected(true);
+      const session = loadSession();
+      if (!session) {
+        setRestoring(false);
+        return;
+      }
+      s.emit('rejoinRoom', session.roomCode, session.playerId, (response: RoomJoinedPayload & { success: boolean; error?: string }) => {
+        if (response.success) {
+          applyPayload(response);
+        } else {
+          clearSession();
+          setGameState(null);
+          setPrivateState(null);
+          setAllCharacters([]);
+          setPlayerId(null);
+        }
+        setRestoring(false);
+      });
+    };
+
     const onDisconnect = () => setConnected(false);
     const onRoomUpdate = (payload: RoomJoinedPayload) => {
       setGameState(payload.gameState);
@@ -44,21 +109,15 @@ export function useGameSocket() {
     s.on('disconnect', onDisconnect);
     s.on('roomUpdate', onRoomUpdate);
 
-    if (s.connected) setConnected(true);
+    if (s.connected) onConnect();
+    else if (!loadSession()) setRestoring(false);
 
     return () => {
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
       s.off('roomUpdate', onRoomUpdate);
     };
-  }, []);
-
-  const applyPayload = useCallback((payload: RoomJoinedPayload & { success?: boolean }) => {
-    setGameState(payload.gameState);
-    setPrivateState(payload.privateState);
-    setAllCharacters(payload.allCharacters);
-    setPlayerId(payload.playerId);
-  }, []);
+  }, [applyPayload]);
 
   const createRoom = useCallback((playerName: string): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -92,6 +151,29 @@ export function useGameSocket() {
 
   const startGame = useCallback(() => {
     getSocket().emit('startGame');
+  }, []);
+
+  const selectCharacter = useCallback((characterId: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      getSocket().emit('selectCharacter', characterId, (response: { success: boolean; error?: string }) => {
+        if (!response.success) {
+          setError(response.error ?? 'Sélection impossible.');
+        }
+        resolve(response.success);
+      });
+    });
+  }, []);
+
+  const restartGame = useCallback((): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setError(null);
+      getSocket().emit('restartGame', (response: { success: boolean; error?: string }) => {
+        if (!response.success) {
+          setError(response.error ?? 'Impossible de relancer.');
+        }
+        resolve(response.success);
+      });
+    });
   }, []);
 
   const askQuestion = useCallback((attributeKey: AttributeKey) => {
@@ -139,6 +221,7 @@ export function useGameSocket() {
 
   const leaveRoom = useCallback(() => {
     getSocket().emit('leaveRoom');
+    clearSession();
     setGameState(null);
     setPrivateState(null);
     setAllCharacters([]);
@@ -147,6 +230,7 @@ export function useGameSocket() {
 
   return {
     connected,
+    restoring,
     gameState,
     privateState,
     allCharacters,
@@ -157,6 +241,8 @@ export function useGameSocket() {
     joinRoom,
     createVsAI,
     startGame,
+    selectCharacter,
+    restartGame,
     askQuestion,
     askCustomQuestion,
     submitAnswer,
