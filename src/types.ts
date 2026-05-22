@@ -163,7 +163,6 @@ export interface GameStatePublic {
     forPlayerId: string;
   } | null;
   activeCharacters: string[];
-  takenCharacterIds?: string[];
   questionHistory: QuestionHistoryEntry[];
   aiThinking?: boolean;
 }

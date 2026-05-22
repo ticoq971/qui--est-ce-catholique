@@ -180,7 +180,7 @@ io.on('connection', (socket: Socket) => {
       callback?.({ success: false, error: 'Personnage indisponible.' });
       return;
     }
-    room.lastAction = `${room.players.get(playerId)!.name} a choisi son personnage.`;
+    room.lastAction = `${room.players.get(playerId)!.name} est prêt.`;
     broadcastRoom(ctx, room);
     tryBeginPlaying(ctx, room);
     callback?.({ success: true });

@@ -167,7 +167,6 @@ export function getGameStatePublic(room: Room): GameStatePublic {
     lastAction: room.lastAction,
     revelationResult: room.revelationResult,
     activeCharacters: [...room.activeCharacterIds],
-    takenCharacterIds: room.status === 'selecting' ? getTakenCharacterIds(room) : undefined,
     questionHistory: [...room.questionHistory],
     aiThinking: room.aiThinking,
   };
@@ -219,26 +218,18 @@ function checkWinner(room: Room): string | null {
   return null;
 }
 
-function getTakenCharacterIds(room: Room): string[] {
-  return room.playerOrder
-    .map((id) => room.players.get(id)!.characterId)
-    .filter((id): id is string => id !== null);
-}
-
 function prepareBoard(room: Room) {
-  const boardSize = Math.min(CHARACTERS.length, Math.max(24, room.players.size * 8));
-  const minSize = Math.max(boardSize, room.playerOrder.length);
-  room.activeCharacterIds = shuffleArray(CHARACTERS.map((c) => c.id)).slice(0, minSize);
+  // Tous les personnages du jeu sont disponibles à la sélection et sur le plateau
+  room.activeCharacterIds = shuffleArray(CHARACTERS.map((c) => c.id));
 }
 
 function assignBotCharacters(room: Room) {
-  const taken = new Set(getTakenCharacterIds(room));
-  const available = shuffleArray(room.activeCharacterIds.filter((id) => !taken.has(id)));
+  const pool = shuffleArray([...room.activeCharacterIds]);
   let i = 0;
   for (const playerId of room.playerOrder) {
     const player = room.players.get(playerId)!;
     if (player.isBot && !player.characterId) {
-      player.characterId = available[i++] ?? null;
+      player.characterId = pool[i++ % pool.length] ?? null;
     }
   }
 }
@@ -289,12 +280,6 @@ export function selectCharacter(room: Room, playerId: string, characterId: strin
 
   const player = room.players.get(playerId);
   if (!player || player.isBot) return false;
-
-  const takenByOther = room.playerOrder.some((id) => {
-    if (id === playerId) return false;
-    return room.players.get(id)!.characterId === characterId;
-  });
-  if (takenByOther) return false;
 
   player.characterId = characterId;
   return true;

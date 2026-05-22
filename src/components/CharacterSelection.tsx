@@ -21,7 +21,6 @@ export default function CharacterSelection({
   onLeave,
 }: CharacterSelectionProps) {
   const [infoCharacter, setInfoCharacter] = useState<Character | null>(null);
-  const taken = new Set(gameState.takenCharacterIds ?? []);
   const myId = privateState.characterId;
   const humans = gameState.players.filter((p) => !p.isBot);
   const allReady = humans.every((p) => p.hasSelectedCharacter);
@@ -38,11 +37,11 @@ export default function CharacterSelection({
     <div className="app character-selection-page">
       <div className="character-selection">
         <header className="selection-header">
-          <h2>Choisissez votre personnage</h2>
+          <h2>Choisissez votre personnage secret</h2>
           <p className="selection-subtitle">
             {gameState.isVsAI
-              ? 'Sélectionnez qui vous incarnez — l\'IA prendra les personnages restants.'
-              : 'Chaque joueur choisit un personnage unique. La partie démarre quand tout le monde a choisi.'}
+              ? `${boardCharacters.length} personnages disponibles. Votre choix reste secret — plusieurs joueurs peuvent incarner le même personnage.`
+              : `${boardCharacters.length} personnages disponibles. Votre choix reste secret — la partie démarre quand tout le monde a confirmé.`}
           </p>
           {gameState.lastAction && (
             <p className="selection-status">{gameState.lastAction}</p>
@@ -51,19 +50,19 @@ export default function CharacterSelection({
 
         {!myId && me && !me.isBot && (
           <div className="selection-cta">
-            👇 <strong>Cliquez sur une carte</strong> dans la grille pour choisir votre personnage
+            👇 <strong>Cliquez sur une carte</strong> — seul vous verrez votre choix
           </div>
         )}
 
         {myId && (
           <div className="selection-cta selected">
-            ✅ Vous avez choisi <strong>{privateState.characterName}</strong>
+            ✅ Votre personnage secret : <strong>{privateState.characterName}</strong>
             {allReady && !gameState.isVsAI ? ' — en attente des autres joueurs…' : ''}
           </div>
         )}
 
         <main className="selection-grid-panel panel">
-          <h3>Personnages disponibles ({boardCharacters.length})</h3>
+          <h3>Personnages ({boardCharacters.length})</h3>
           {boardCharacters.length === 0 ? (
             <p className="selection-empty">
               Chargement des personnages… Si rien n&apos;apparaît, quittez et relancez la partie.
@@ -71,24 +70,21 @@ export default function CharacterSelection({
           ) : (
             <div className="selection-grid">
               {boardCharacters.map((char) => {
-                const isTaken = taken.has(char.id) && char.id !== myId;
                 const isMine = char.id === myId;
 
                 return (
                   <div
                     key={char.id}
-                    className={`selection-card-wrap ${isTaken ? 'taken' : ''} ${isMine ? 'selected' : ''}`}
+                    className={`selection-card-wrap ${isMine ? 'selected' : ''}`}
                   >
                     <button
                       type="button"
                       className="selection-card"
-                      disabled={isTaken}
                       onClick={() => onSelect(char.id)}
-                      title={isTaken ? 'Déjà choisi par un autre joueur' : 'Choisir ce personnage'}
+                      title="Choisir ce personnage (secret)"
                     >
                       <span className="emoji">{char.emoji}</span>
                       <span className="name">{char.name}</span>
-                      {isTaken && <span className="taken-label">Pris</span>}
                       {isMine && <span className="mine-label">Votre choix</span>}
                     </button>
                     <button
@@ -121,7 +117,7 @@ export default function CharacterSelection({
                   {player.id === playerId && ' (vous)'}
                 </span>
                 <span className="selection-ready-badge">
-                  {player.isBot ? '—' : player.hasSelectedCharacter ? '✅' : '…'}
+                  {player.isBot ? '—' : player.hasSelectedCharacter ? '✅ Prêt' : '…'}
                 </span>
               </li>
             ))}
