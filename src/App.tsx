@@ -74,6 +74,8 @@ export default function App() {
       onSubmitAnswer={game.submitAnswer}
       onUseSpecialCard={game.useSpecialCard}
       onToggleEliminated={game.toggleEliminated}
+      onBulkEliminate={game.bulkEliminate}
+      onRestoreAllEliminated={game.restoreAllEliminated}
       onGuessCharacter={game.guessCharacter}
       onRestart={game.restartGame}
       onLeave={game.leaveRoom}

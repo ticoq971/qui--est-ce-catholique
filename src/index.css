@@ -517,6 +517,59 @@ input {
   flex-shrink: 0;
   padding: 0.2rem 0.4rem !important;
   min-width: auto !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: var(--navy) !important;
+  border-color: var(--gold-light) !important;
+}
+
+.panel-side,
+.panel-questions {
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+.opponent-row-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.opponent-candidate-badge {
+  background: var(--navy);
+  color: var(--gold-light);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 10px;
+  min-width: 1.4rem;
+  text-align: center;
+}
+
+.opponent-guess-btn {
+  flex-shrink: 0;
+  padding: 0.2rem 0.45rem !important;
+  font-size: 0.65rem !important;
+}
+
+.opponent-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.4rem;
+  background: white;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  flex-wrap: nowrap;
+}
+
+.opponent-row > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .my-character .emoji {
@@ -534,6 +587,103 @@ input {
   font-size: 0.8rem;
   opacity: 0.8;
   margin-top: 0.25rem;
+}
+
+.character-info-dates {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--gold-dark);
+  margin-top: 0.25rem;
+  font-weight: 600;
+}
+
+/* Board filters */
+.board-filters {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--cream-dark);
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.board-filters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.board-filters-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+
+.board-filters-count {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.board-filters-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.board-filters-tabs button {
+  flex: 1;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.65rem;
+  border: 1px solid var(--cream-dark);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+
+.board-filters-tabs button.active {
+  background: var(--navy);
+  color: var(--gold-light);
+  border-color: var(--navy);
+}
+
+.board-filters-select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  border: 1px solid var(--cream-dark);
+  border-radius: 6px;
+  margin-bottom: 0.35rem;
+  font-family: inherit;
+}
+
+.board-filters-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+}
+
+.board-filters-actions .btn {
+  flex: 1;
+  font-size: 0.62rem !important;
+  padding: 0.35rem 0.25rem !important;
+  line-height: 1.2;
+}
+
+.board-filters-full {
+  width: 100%;
+  margin-bottom: 0.35rem;
+  font-size: 0.68rem !important;
+}
+
+.board-filters-restore {
+  width: 100%;
+  font-size: 0.68rem !important;
+}
+
+.guess-modal-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
 }
 
 /* Character grid */
@@ -687,6 +837,42 @@ input {
   line-height: 1.2;
 }
 
+.special-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.special-card.waiting {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
+.special-card.ready {
+  border-color: var(--gold);
+}
+
+.special-cards-note {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin: 0 0 0.35rem;
+  font-style: italic;
+}
+
+.special-cards-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.special-card-info .hint-ready {
+  color: var(--text-muted);
+}
+
+.special-card-info .hint-wait {
+  color: var(--burgundy);
+  font-weight: 600;
+}
+
 /* Pending question */
 .pending-question {
   background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%);
@@ -709,15 +895,6 @@ input {
   gap: 0.3rem;
   justify-content: center;
   margin-top: 0.4rem;
-}
-
-.special-card.used {
-  opacity: 0.4;
-}
-
-.special-card-info {
-  flex: 1;
-  min-width: 0;
 }
 
 .answer-badge {
@@ -832,16 +1009,6 @@ input {
   gap: 0.3rem;
 }
 
-.opponent-row {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.4rem;
-  background: white;
-  border-radius: 6px;
-  font-size: 0.75rem;
-}
-
 .opponent-row.guessed {
   background: #d8f3dc;
   border: 1px solid var(--success);
@@ -850,6 +1017,7 @@ input {
 .opponent-row .status {
   margin-left: auto;
   font-size: 0.7rem;
+  flex-shrink: 0;
 }
 
 .opponent-offline {
@@ -1012,46 +1180,125 @@ input {
 }
 
 /* Opponent candidates */
+.opponent-candidates-scroll {
+  max-height: 180px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--cream-dark);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
 .opponent-candidates {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .candidate-block {
   background: white;
   border: 1px solid var(--cream-dark);
-  border-radius: 8px;
-  padding: 0.6rem;
-}
-
-.candidate-block.guessed {
-  opacity: 0.6;
+  border-radius: 6px;
+  padding: 0.4rem 0.45rem;
 }
 
 .candidate-block-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.85rem;
+  gap: 0.5rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.candidate-block-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .candidate-count {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 400;
+  font-size: 0.7rem;
+  color: var(--burgundy);
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .candidate-count.identified {
   color: var(--success);
 }
 
-.candidate-chips {
+.candidate-block.guessed {
+  opacity: 0.65;
+}
+
+.candidate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.candidate-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  background: var(--cream);
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.candidate-list-emoji {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+}
+
+.candidate-list-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-list-info {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.6rem;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.candidate-list-info:hover {
+  opacity: 1;
+}
+
+.candidate-empty {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+  padding: 0.15rem 0;
+}
+
+.candidate-quick-guess {
+  margin-top: 0.35rem;
+  width: 100%;
+  font-size: 0.68rem !important;
+  padding: 0.3rem !important;
 }
 
 .candidate-chip {

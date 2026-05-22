@@ -193,7 +193,29 @@ export function useGameSocket() {
   }, []);
 
   const toggleEliminated = useCallback((characterId: string) => {
+    setPrivateState((prev) => {
+      if (!prev) return prev;
+      const eliminated = prev.eliminated.includes(characterId)
+        ? prev.eliminated.filter((id) => id !== characterId)
+        : [...prev.eliminated, characterId];
+      return { ...prev, eliminated };
+    });
     getSocket().emit('toggleEliminated', characterId);
+  }, []);
+
+  const bulkEliminate = useCallback((characterIds: string[]) => {
+    if (characterIds.length === 0) return;
+    setPrivateState((prev) => {
+      if (!prev) return prev;
+      const set = new Set([...prev.eliminated, ...characterIds]);
+      return { ...prev, eliminated: [...set] };
+    });
+    getSocket().emit('bulkEliminate', characterIds);
+  }, []);
+
+  const restoreAllEliminated = useCallback(() => {
+    setPrivateState((prev) => (prev ? { ...prev, eliminated: [] } : prev));
+    getSocket().emit('restoreAllEliminated');
   }, []);
 
   const guessCharacter = useCallback((targetPlayerId: string, characterId: string): Promise<GuessResult> => {
@@ -248,6 +270,8 @@ export function useGameSocket() {
     submitAnswer,
     useSpecialCard,
     toggleEliminated,
+    bulkEliminate,
+    restoreAllEliminated,
     guessCharacter,
     leaveRoom,
   };

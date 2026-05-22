@@ -190,6 +190,6 @@ export interface GuessResult {
   targetPlayerName: string;
   guessedCharacterId: string;
   guessedCharacterName: string;
-  actualCharacterName: string;
+  actualCharacterName?: string;
   message: string;
 }

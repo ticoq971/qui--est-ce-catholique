@@ -90,6 +90,11 @@ function getQuestionLabel(pq: PendingQuestion): string {
   return '?';
 }
 
+function applyPendingAnswersToKnowledge(room: Room, askerId: string, pq: PendingQuestion) {
+  if (!pq.attributeKey || pq.isCustom || pq.answers.size === 0) return;
+  onAiQuestionResolved(room, askerId, pq.attributeKey, pq.answers);
+}
+
 function getResponders(room: Room, askerId: string, isConcile: boolean): string[] {
   return isConcile ? room.playerOrder : room.playerOrder.filter((id) => id !== askerId);
 }
@@ -417,6 +422,8 @@ export function createGameContext(io: Server): ServerContext {
 
     if (manual) {
       autoAnswerBots(room, room.pendingQuestion);
+      applyPendingAnswersToKnowledge(room, playerId, room.pendingQuestion);
+      broadcastRoom(ctx, room);
       if (allRespondersAnswered(room, room.pendingQuestion)) {
         finalizeQuestion(ctx, room);
       }
@@ -473,6 +480,7 @@ export function createGameContext(io: Server): ServerContext {
       return;
     }
 
+    applyPendingAnswersToKnowledge(room, pq.askerId, pq);
     broadcastRoom(ctx, room);
 
     if (allRespondersAnswered(room, pq)) {
@@ -558,6 +566,8 @@ export function createGameContext(io: Server): ServerContext {
         broadcastRoom(ctx, room);
         if (room.pendingQuestion.manualAnswers) {
           autoAnswerBots(room, room.pendingQuestion);
+          applyPendingAnswersToKnowledge(room, playerId, room.pendingQuestion);
+          broadcastRoom(ctx, room);
           if (allRespondersAnswered(room, room.pendingQuestion)) {
             finalizeQuestion(ctx, room);
           }
@@ -587,6 +597,10 @@ export function createGameContext(io: Server): ServerContext {
     const target = room.players.get(targetPlayerId);
     if (!target?.characterId) return;
     if (player.guessesCorrect.includes(targetPlayerId)) return;
+
+    // Deviner annule toute question en attente de réponse
+    room.pendingQuestion = null;
+    room.revelationResult = null;
 
     const guessed = getCharacterById(characterId);
     if (!guessed) return;

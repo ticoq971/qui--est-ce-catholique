@@ -259,6 +259,36 @@ io.on('connection', (socket: Socket) => {
     socket.emit('roomUpdate', buildRoomPayload(room, playerId));
   });
 
+  socket.on('bulkEliminate', (characterIds: string[]) => {
+    const room = getRoomFromSocket(socket);
+    if (!room || room.status !== 'playing') return;
+
+    const playerId = socketToPlayer.get(socket.id)!;
+    const player = room.players.get(playerId)!;
+    const validIds = new Set(
+      characterIds.filter((id) => room.activeCharacterIds.includes(id)),
+    );
+
+    for (const id of validIds) {
+      if (!player.eliminated.includes(id)) {
+        player.eliminated.push(id);
+      }
+    }
+
+    socket.emit('roomUpdate', buildRoomPayload(room, playerId));
+  });
+
+  socket.on('restoreAllEliminated', () => {
+    const room = getRoomFromSocket(socket);
+    if (!room || room.status !== 'playing') return;
+
+    const playerId = socketToPlayer.get(socket.id)!;
+    const player = room.players.get(playerId)!;
+    player.eliminated = [];
+
+    socket.emit('roomUpdate', buildRoomPayload(room, playerId));
+  });
+
   socket.on('guessCharacter', (targetPlayerId: string, characterId: string, callback) => {
     const room = getRoomFromSocket(socket);
     if (!room || room.status !== 'playing') {
@@ -298,10 +328,10 @@ io.on('connection', (socket: Socket) => {
       targetPlayerName: target.name,
       guessedCharacterId: characterId,
       guessedCharacterName: guessed.name,
-      actualCharacterName: actual.name,
+      ...(isCorrect ? { actualCharacterName: actual.name } : {}),
       message: isCorrect
         ? `Correct ! ${target.name} est bien ${actual.name}.`
-        : `Incorrect. C'était ${actual.name}, pas ${guessed.name}.`,
+        : `Incorrect — ce n'était pas ${guessed.name}.`,
     });
   });
 

@@ -1,6 +1,7 @@
 import type { Character } from '../types';
 import { CATEGORY_LABELS } from '../types';
 import { getCharacterBio, getCharacterTraits } from '../data/characterInfo';
+import { getCharacterLifeYears } from '../data/characterLifeDates';
 
 interface CharacterInfoModalProps {
   character: Character | null;
@@ -12,6 +13,7 @@ export default function CharacterInfoModal({ character, onClose }: CharacterInfo
 
   const bio = getCharacterBio(character);
   const traits = getCharacterTraits(character);
+  const lifeYears = getCharacterLifeYears(character.id);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -21,6 +23,9 @@ export default function CharacterInfoModal({ character, onClose }: CharacterInfo
           <div>
             <h3>{character.name}</h3>
             <span className="character-info-category">{CATEGORY_LABELS[character.category]}</span>
+            {lifeYears && (
+              <span className="character-info-dates">📅 {lifeYears}</span>
+            )}
           </div>
         </div>
 

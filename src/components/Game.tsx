@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type {
   Character,
   GameStatePublic,
@@ -8,7 +8,9 @@ import type {
   GuessResult,
 } from '../types';
 import { ATTRIBUTE_QUESTIONS } from '../types';
+import { filterCandidatesByEliminated, resolveOpponentCharactersForAll } from '../utils/candidates';
 import CharacterGrid from './CharacterGrid';
+import BoardFilters from './BoardFilters';
 import SpecialCardsPanel from './SpecialCardsPanel';
 import QuestionHistory from './QuestionHistory';
 import OpponentCandidates from './OpponentCandidates';
@@ -26,6 +28,8 @@ interface GameProps {
   onSubmitAnswer: (answer: boolean) => void;
   onUseSpecialCard: (card: SpecialCardType, targetId?: string, attributeKey?: AttributeKey) => void;
   onToggleEliminated: (characterId: string) => void;
+  onBulkEliminate: (characterIds: string[]) => void;
+  onRestoreAllEliminated: () => void;
   onGuessCharacter: (targetPlayerId: string, characterId: string) => Promise<GuessResult>;
   onRestart: () => Promise<boolean>;
   onLeave: () => void;
@@ -41,6 +45,8 @@ export default function Game({
   onSubmitAnswer,
   onUseSpecialCard,
   onToggleEliminated,
+  onBulkEliminate,
+  onRestoreAllEliminated,
   onGuessCharacter,
   onRestart,
   onLeave,
@@ -79,6 +85,19 @@ export default function Game({
 
   const currentPlayer = gameState.players.find((p) => p.id === gameState.currentTurnPlayerId);
   const isAiTurn = currentPlayer?.isBot && !gameState.pendingQuestion;
+
+  const displayCandidates = useMemo(
+    () => filterCandidatesByEliminated(
+      privateState.opponentCandidates ?? {},
+      privateState.eliminated,
+    ),
+    [privateState.opponentCandidates, privateState.eliminated],
+  );
+
+  const resolvedByOpponent = useMemo(
+    () => resolveOpponentCharactersForAll(opponents, displayCandidates, allCharacters),
+    [opponents, displayCandidates, allCharacters],
+  );
 
   const handleAsk = () => {
     if (selectedQuestion) {
@@ -247,7 +266,7 @@ export default function Game({
 
         <div className="game-layout">
           {/* Left panel */}
-          <div className="panel">
+          <div className="panel panel-side">
             <h3 className="panel-section-title">Votre personnage</h3>
             {privateState.characterName && (
               <div className="my-character my-character-compact">
@@ -288,33 +307,39 @@ export default function Game({
                   {me.guessesCorrect.includes(opp.id) ? (
                     <span className="status">✅ Identifié</span>
                   ) : (
-                    <button
-                      className="btn btn-sm btn-success"
-                      style={{ marginLeft: 'auto' }}
-                      onClick={() => setGuessModal({ targetId: opp.id, targetName: opp.name })}
-                    >
-                      Deviner
-                    </button>
+                    <div className="opponent-row-actions">
+                      <span className="opponent-candidate-badge">
+                        {resolvedByOpponent[opp.id]?.length ?? 0}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-success opponent-guess-btn"
+                        onClick={() => setGuessModal({ targetId: opp.id, targetName: opp.name })}
+                      >
+                        Deviner
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
             </div>
 
             <h3 className="panel-section-title">Candidats restants</h3>
-            <OpponentCandidates
-              opponents={opponents}
-              candidates={privateState.opponentCandidates ?? {}}
-              allCharacters={allCharacters}
-              guessedIds={me.guessesCorrect}
-              onShowInfo={setInfoCharacter}
-              onQuickGuess={(targetId, characterId) => {
-                const opp = opponents.find((o) => o.id === targetId);
-                if (opp) {
-                  setGuessModal({ targetId, targetName: opp.name });
-                  setSelectedGuess(characterId);
-                }
-              }}
-            />
+            <div className="opponent-candidates-scroll">
+              <OpponentCandidates
+                opponents={opponents}
+                resolvedByOpponent={resolvedByOpponent}
+                guessedIds={me.guessesCorrect}
+                onShowInfo={setInfoCharacter}
+                onQuickGuess={(targetId, characterId) => {
+                  const opp = opponents.find((o) => o.id === targetId);
+                  if (opp) {
+                    setGuessModal({ targetId, targetName: opp.name });
+                    setSelectedGuess(characterId);
+                  }
+                }}
+              />
+            </div>
 
             <h3 className="panel-section-title">Cartes spéciales</h3>
             <SpecialCardsPanel
@@ -387,12 +412,20 @@ export default function Game({
             {showEncyclopedia ? (
               <CharacterEncyclopedia characters={allCharacters} onSelect={setInfoCharacter} />
             ) : (
-              <CharacterGrid
-                characters={allCharacters}
-                eliminated={privateState.eliminated}
-                onToggle={onToggleEliminated}
-                onShowInfo={setInfoCharacter}
-              />
+              <>
+                <BoardFilters
+                  characters={allCharacters}
+                  eliminated={privateState.eliminated}
+                  onBulkEliminate={onBulkEliminate}
+                  onRestoreAll={onRestoreAllEliminated}
+                />
+                <CharacterGrid
+                  characters={allCharacters}
+                  eliminated={privateState.eliminated}
+                  onToggle={onToggleEliminated}
+                  onShowInfo={setInfoCharacter}
+                />
+              </>
             )}
           </div>
 
@@ -490,24 +523,29 @@ export default function Game({
 
       {/* Guess modal */}
       {guessModal && (() => {
-        const targetCandidateIds = privateState.opponentCandidates?.[guessModal.targetId] ?? [];
+        const notEliminated = (c: Character) => !privateState.eliminated.includes(c.id);
+        const targetCandidateIds = (displayCandidates[guessModal.targetId] ?? [])
+          .filter((id) => !privateState.eliminated.includes(id));
         const candidateChars = targetCandidateIds
           .map((id) => allCharacters.find((c) => c.id === id))
-          .filter(Boolean) as Character[];
-        const otherChars = allCharacters.filter(
-          (c) => !targetCandidateIds.includes(c.id) && !privateState.eliminated.includes(c.id),
-        );
+          .filter((c): c is Character => !!c && notEliminated(c));
+        const guessableChars = allCharacters.filter(notEliminated);
+        const otherChars = guessableChars.filter((c) => !targetCandidateIds.includes(c.id));
 
         return (
         <div className="modal-overlay" onClick={closeGuessModal}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal guess-modal" onClick={(e) => e.stopPropagation()}>
             {!guessResult ? (
               <>
                 <h3>Qui est {guessModal.targetName} ?</h3>
+                <p className="guess-modal-hint">Seuls les personnages encore actifs sur votre plateau sont proposés.</p>
                 {candidateChars.length === 1 && (
                   <p className="guess-hint-single">
                     D'après vos questions, un seul candidat reste probable.
                   </p>
+                )}
+                {guessableChars.length === 0 && (
+                  <p className="candidate-empty">Aucun personnage actif — restaurez votre plateau.</p>
                 )}
                 {candidateChars.length > 0 && (
                   <>
@@ -518,6 +556,7 @@ export default function Game({
                       {candidateChars.map((c) => (
                         <div key={c.id} className="guess-option-wrap">
                           <button
+                            type="button"
                             className={`guess-option probable ${selectedGuess === c.id ? 'selected' : ''}`}
                             onClick={() => setSelectedGuess(c.id)}
                           >
@@ -540,12 +579,13 @@ export default function Game({
                 {otherChars.length > 0 && (
                   <>
                     <p className="guess-section-label" style={{ marginTop: '0.75rem' }}>
-                      Autres personnages
+                      Autres personnages actifs ({otherChars.length})
                     </p>
                     <div className="guess-grid">
                       {otherChars.map((c) => (
                         <div key={c.id} className="guess-option-wrap">
                           <button
+                            type="button"
                             className={`guess-option ${selectedGuess === c.id ? 'selected' : ''}`}
                             onClick={() => setSelectedGuess(c.id)}
                           >
@@ -578,8 +618,6 @@ export default function Game({
                 <p style={{ margin: '1rem 0' }}>{guessResult.message}</p>
                 {!guessResult.success && (
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Le personnage de {guessResult.targetPlayerName} était :{' '}
-                    <strong>{guessResult.actualCharacterName}</strong>.
                     Revoyez l'historique de vos questions pour affiner votre déduction.
                   </p>
                 )}
