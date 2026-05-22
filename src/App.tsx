@@ -49,6 +49,7 @@ export default function App() {
       specialCards: [],
       canAskSecondQuestion: false,
       canRetryTurn: false,
+      hasGuessedThisTurn: false,
       opponentCandidates: {},
     };
     return (

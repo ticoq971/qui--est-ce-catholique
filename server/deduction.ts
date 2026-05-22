@@ -35,14 +35,11 @@ export function applyAnswersToKnowledge(
   knowledge: PlayerKnowledge,
   attributeKey: AttributeKey,
   answers: Map<string, boolean>,
-  askerId: string,
 ) {
-  for (const [oppId, answer] of answers) {
-    if (oppId === askerId) continue;
-    const current = knowledge.possibleByOpponent.get(oppId);
+  for (const [responderId, answer] of answers) {
+    const current = knowledge.possibleByOpponent.get(responderId);
     if (!current) continue;
-    const filtered = filterByAttribute(current, attributeKey, answer);
-    knowledge.possibleByOpponent.set(oppId, filtered.size > 0 ? filtered : current);
+    knowledge.possibleByOpponent.set(responderId, filterByAttribute(current, attributeKey, answer));
   }
 }
 
@@ -54,8 +51,7 @@ export function applyRevelationToKnowledge(
 ) {
   const current = knowledge.possibleByOpponent.get(targetId);
   if (!current) return;
-  const filtered = filterByAttribute(current, attributeKey, value);
-  knowledge.possibleByOpponent.set(targetId, filtered.size > 0 ? filtered : current);
+  knowledge.possibleByOpponent.set(targetId, filterByAttribute(current, attributeKey, value));
 }
 
 export function knowledgeToRecord(knowledge: PlayerKnowledge): Record<string, string[]> {

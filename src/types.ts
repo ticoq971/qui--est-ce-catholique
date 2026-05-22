@@ -174,6 +174,7 @@ export interface PlayerPrivate {
   specialCards: SpecialCardType[];
   canAskSecondQuestion: boolean;
   canRetryTurn: boolean;
+  hasGuessedThisTurn: boolean;
   opponentCandidates: Record<string, string[]>;
 }
 

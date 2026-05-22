@@ -345,7 +345,7 @@ const RAW_CHARACTERS: RawCharacter[] = [
     category: 'saint',
     emoji: '⚜️',
     hint: 'Roi de France, croisé',
-    attributes: { homme: true, pape: false, apotre: false, martyr: false, religieux: false, eveque: false, avant1000: false, europeen: true, fondateurOrdre: true, docteurEglise: false, biblique: false, canonise: true },
+    attributes: { homme: true, pape: false, apotre: false, martyr: false, religieux: false, eveque: false, avant1000: false, europeen: true, fondateurOrdre: false, docteurEglise: false, biblique: false, canonise: true },
   },
 
   // ——— Saintes ———

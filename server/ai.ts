@@ -1,5 +1,5 @@
 import { getCharacterById } from '../src/data/characters';
-import type { AttributeKey, SpecialCardType } from '../src/types';
+import type { AttributeKey } from '../src/types';
 import { ATTRIBUTE_QUESTIONS } from '../src/types';
 import type { Room, Player, ServerContext } from './gameEngine';
 import {
@@ -30,6 +30,7 @@ export function createBotPlayer(name: string): Player {
     guessesCorrect: [],
     canAskSecondQuestion: false,
     canRetryTurn: false,
+    hasGuessedThisTurn: false,
   };
 }
 
@@ -82,14 +83,13 @@ function pickRevelationTarget(knowledge: PlayerKnowledge): { oppId: string; attr
   return null;
 }
 
-function eliminateForBot(room: Room, botId: string, knowledge: PlayerKnowledge) {
-  const bot = room.players.get(botId)!;
-  const activeIds = new Set(room.activeCharacterIds);
-  const toEliminate = new Set<string>();
+function syncEliminationsFromKnowledge(room: Room, playerId: string, knowledge: PlayerKnowledge) {
+  const player = room.players.get(playerId)!;
+  const elim = new Set(player.eliminated);
 
-  for (const id of activeIds) {
-    if (id === bot.characterId) {
-      toEliminate.add(id);
+  for (const id of room.activeCharacterIds) {
+    if (id === player.characterId) {
+      elim.add(id);
       continue;
     }
     let stillPossible = false;
@@ -99,10 +99,10 @@ function eliminateForBot(room: Room, botId: string, knowledge: PlayerKnowledge) 
         break;
       }
     }
-    if (!stillPossible) toEliminate.add(id);
+    if (!stillPossible) elim.add(id);
   }
 
-  bot.eliminated = [...toEliminate];
+  player.eliminated = [...elim];
 }
 
 function clearAiTimer(roomCode: string) {
@@ -221,18 +221,15 @@ export function maybeAiIntercession(ctx: ServerContext, room: Room, humanAskerId
 
 export function onQuestionResolvedForKnowledge(
   room: Room,
-  askerId: string,
+  _askerId: string,
   attributeKey: AttributeKey,
   answers: Map<string, boolean>,
 ) {
   for (const playerId of room.playerKnowledge.keys()) {
     const knowledge = room.playerKnowledge.get(playerId);
     if (!knowledge) continue;
-    applyAnswersToKnowledge(knowledge, attributeKey, answers, askerId);
-    const player = room.players.get(playerId);
-    if (player?.isBot) {
-      eliminateForBot(room, playerId, knowledge);
-    }
+    applyAnswersToKnowledge(knowledge, attributeKey, answers);
+    syncEliminationsFromKnowledge(room, playerId, knowledge);
   }
 }
 
@@ -247,10 +244,7 @@ export function onRevelationForKnowledge(
   if (!knowledge) return;
 
   applyRevelationToKnowledge(knowledge, targetId, attributeKey, value);
-  const player = room.players.get(playerId);
-  if (player?.isBot) {
-    eliminateForBot(room, playerId, knowledge);
-  }
+  syncEliminationsFromKnowledge(room, playerId, knowledge);
 }
 
 export function initAllPlayerKnowledge(room: Room) {
@@ -262,13 +256,6 @@ export function initAllPlayerKnowledge(room: Room) {
       initPlayerKnowledge(playerId, room.playerOrder, player.characterId, room.activeCharacterIds),
     );
   }
-}
-
-export function dealBotSpecialCards(bot: Player) {
-  const ALL: SpecialCardType[] = ['miracle', 'revelation', 'intercession', 'concile', 'martyre'];
-  const shuffled = [...ALL].sort(() => Math.random() - 0.5);
-  bot.specialCards = shuffled.slice(0, 3);
-  bot.specialCardsUsed = [];
 }
 
 export function cleanupRoomTimers(roomCode: string) {

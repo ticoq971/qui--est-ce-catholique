@@ -1,6 +1,34 @@
 import type { Character } from '../types';
 
-/** Candidats adverses affichés = déduction serveur − personnages éliminés sur votre plateau */
+/**
+ * Candidats affichés pour un adversaire :
+ * déduction serveur ∩ personnages encore actifs sur votre plateau (non éliminés).
+ */
+export function computeOpponentCandidates(
+  opponents: { id: string }[],
+  activeCharacterIds: string[],
+  ownCharacterId: string | null,
+  eliminated: string[],
+  serverKnowledge: Record<string, string[]>,
+): Record<string, string[]> {
+  const elim = new Set(eliminated);
+  const result: Record<string, string[]> = {};
+
+  for (const opp of opponents) {
+    const deduced = serverKnowledge[opp.id];
+    const basePool = deduced?.length
+      ? deduced
+      : activeCharacterIds.filter((id) => id !== ownCharacterId);
+
+    result[opp.id] = basePool.filter(
+      (id) => id !== ownCharacterId && !elim.has(id),
+    );
+  }
+
+  return result;
+}
+
+/** @deprecated Utiliser computeOpponentCandidates */
 export function filterCandidatesByEliminated(
   candidates: Record<string, string[]>,
   eliminated: string[],

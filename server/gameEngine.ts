@@ -2,10 +2,9 @@ import type { Server } from 'socket.io';
 import type { AttributeKey, GameStatePublic, PlayerPrivate, PlayerPublic, QuestionHistoryEntry, RoomJoinedPayload, SpecialCardType } from '../src/types';
 import { ATTRIBUTE_QUESTIONS } from '../src/types';
 import { CHARACTERS, getCharacterById, shuffleArray } from '../src/data/characters';
-import { knowledgeToRecord, type PlayerKnowledge } from './deduction';
+import type { PlayerKnowledge } from './deduction';
 import {
   createBotPlayer,
-  dealBotSpecialCards,
   getBotName,
   initAllPlayerKnowledge,
   maybeAiIntercession,
@@ -13,6 +12,7 @@ import {
   onRevelationForKnowledge,
   runAiTurn,
 } from './ai';
+import { dealSpecialCardsToPlayers } from './specialCards';
 
 export interface Player {
   id: string;
@@ -28,6 +28,7 @@ export interface Player {
   guessesCorrect: string[];
   canAskSecondQuestion: boolean;
   canRetryTurn: boolean;
+  hasGuessedThisTurn: boolean;
 }
 
 export interface PendingQuestion {
@@ -70,10 +71,22 @@ export interface ServerContext {
   performAskCustomQuestion: (room: Room, playerId: string, text: string) => void;
   submitAnswer: (room: Room, playerId: string, answer: boolean) => void;
   performSpecialCard: (room: Room, playerId: string, cardType: SpecialCardType, targetPlayerId?: string, attributeKey?: AttributeKey) => void;
-  performGuess: (room: Room, playerId: string, targetPlayerId: string, characterId: string) => void;
+  performGuess: (room: Room, playerId: string, targetPlayerId: string, characterId: string) => boolean;
 }
 
-const ALL_SPECIAL_CARDS: SpecialCardType[] = ['miracle', 'revelation', 'intercession', 'concile', 'martyre'];
+function buildOpponentCandidatesForPlayer(room: Room, player: Player): Record<string, string[]> {
+  const knowledge = room.playerKnowledge.get(player.id);
+  if (!knowledge) return {};
+
+  const elim = new Set(player.eliminated);
+  const result: Record<string, string[]> = {};
+  for (const [oppId, ids] of knowledge.possibleByOpponent) {
+    result[oppId] = [...ids].filter(
+      (id) => id !== player.characterId && !elim.has(id),
+    );
+  }
+  return result;
+}
 
 function getAttributeLabel(key: AttributeKey): string {
   return ATTRIBUTE_QUESTIONS.find((q) => q.key === key)?.label ?? key;
@@ -179,7 +192,6 @@ export function getGameStatePublic(room: Room): GameStatePublic {
 
 function getPlayerPrivate(room: Room, player: Player): PlayerPrivate {
   const char = player.characterId ? getCharacterById(player.characterId) : null;
-  const knowledge = room.playerKnowledge.get(player.id);
   return {
     characterId: player.characterId,
     characterName: char?.name ?? null,
@@ -187,7 +199,8 @@ function getPlayerPrivate(room: Room, player: Player): PlayerPrivate {
     specialCards: player.specialCards.filter((c) => !player.specialCardsUsed.includes(c)),
     canAskSecondQuestion: player.canAskSecondQuestion,
     canRetryTurn: player.canRetryTurn,
-    opponentCandidates: knowledge ? knowledgeToRecord(knowledge) : {},
+    hasGuessedThisTurn: player.hasGuessedThisTurn,
+    opponentCandidates: buildOpponentCandidatesForPlayer(room, player),
   };
 }
 
@@ -261,6 +274,7 @@ export function beginCharacterSelection(room: Room): boolean {
     player.guessesCorrect = [];
     player.canAskSecondQuestion = false;
     player.canRetryTurn = false;
+    player.hasGuessedThisTurn = false;
     player.specialCards = [];
     player.specialCardsUsed = [];
   }
@@ -320,6 +334,7 @@ function beginPlaying(room: Room, ctx?: ServerContext): boolean {
     player.guessesCorrect = [];
     player.canAskSecondQuestion = false;
     player.canRetryTurn = false;
+    player.hasGuessedThisTurn = false;
   }
 
   if (ctx) {
@@ -340,16 +355,8 @@ export function startGame(room: Room): boolean {
 }
 
 function dealSpecialCards(room: Room) {
-  for (const playerId of room.playerOrder) {
-    const player = room.players.get(playerId)!;
-    if (player.isBot) {
-      dealBotSpecialCards(player);
-    } else {
-      const shuffled = shuffleArray(ALL_SPECIAL_CARDS);
-      player.specialCards = shuffled.slice(0, 3);
-      player.specialCardsUsed = [];
-    }
-  }
+  const players = room.playerOrder.map((id) => room.players.get(id)!);
+  dealSpecialCardsToPlayers(players);
 }
 
 export function advanceTurn(room: Room) {
@@ -366,6 +373,7 @@ export function advanceTurn(room: Room) {
 
   if (currentPlayer.canRetryTurn) {
     currentPlayer.canRetryTurn = false;
+    currentPlayer.hasGuessedThisTurn = false;
     room.lastAction = `${currentPlayer.name} reprend son tour grâce à Martyre !`;
     return 'martyre';
   }
@@ -374,6 +382,7 @@ export function advanceTurn(room: Room) {
   room.turnNumber++;
 
   const nextPlayer = room.players.get(room.playerOrder[room.currentTurnIndex])!;
+  nextPlayer.hasGuessedThisTurn = false;
   room.lastAction = `C'est au tour de ${nextPlayer.name}.`;
   return 'next';
 }
@@ -392,7 +401,7 @@ export function createGameContext(io: Server): ServerContext {
     performAskCustomQuestion: () => {},
     submitAnswer: () => {},
     performSpecialCard: () => {},
-    performGuess: () => {},
+    performGuess: () => false,
   };
 
   ctx.performAskQuestion = (room, playerId, attributeKey) => {
@@ -401,6 +410,7 @@ export function createGameContext(io: Server): ServerContext {
     if (room.pendingQuestion && !room.pendingQuestion.blocked) return;
 
     const player = room.players.get(playerId)!;
+    if (player.hasGuessedThisTurn) return;
     const manual = needsManualAnswers(room);
 
     room.pendingQuestion = {
@@ -445,6 +455,7 @@ export function createGameContext(io: Server): ServerContext {
     if (trimmed.length < 3) return;
 
     const player = room.players.get(playerId)!;
+    if (player.hasGuessedThisTurn) return;
     room.pendingQuestion = {
       askerId: playerId,
       attributeKey: null,
@@ -591,22 +602,36 @@ export function createGameContext(io: Server): ServerContext {
   };
 
   ctx.performGuess = (room, playerId, targetPlayerId, characterId) => {
-    if (room.status !== 'playing') return;
+    if (room.status !== 'playing') return false;
+    if (room.playerOrder[room.currentTurnIndex] !== playerId) return false;
+    if (room.pendingQuestion && !room.pendingQuestion.blocked) return false;
 
     const player = room.players.get(playerId)!;
+    if (player.hasGuessedThisTurn) return false;
+
     const target = room.players.get(targetPlayerId);
-    if (!target?.characterId) return;
-    if (player.guessesCorrect.includes(targetPlayerId)) return;
+    if (!target?.characterId) return false;
+    if (player.guessesCorrect.includes(targetPlayerId)) return false;
+
+    player.hasGuessedThisTurn = true;
 
     // Deviner annule toute question en attente de réponse
     room.pendingQuestion = null;
     room.revelationResult = null;
 
     const guessed = getCharacterById(characterId);
-    if (!guessed) return;
+    if (!guessed) {
+      player.hasGuessedThisTurn = false;
+      return false;
+    }
 
     const actual = getCharacterById(target.characterId)!;
     const isCorrect = characterId === target.characterId;
+
+    const endTurnAfterGuess = () => {
+      broadcastRoom(ctx, room);
+      setTimeout(() => afterTurnChange(ctx, room), 2000);
+    };
 
     if (isCorrect) {
       player.guessesCorrect.push(targetPlayerId);
@@ -616,25 +641,24 @@ export function createGameContext(io: Server): ServerContext {
         room.winnerId = winner;
         room.status = 'finished';
         room.lastAction = `🏆 ${room.players.get(winner)!.name} remporte la partie !`;
-      }
-    } else {
-      room.lastAction = `❌ ${player.name} s'est trompé — ce n'était pas ${guessed?.name ?? '?'}.`;
-      if (player.canRetryTurn) {
-        player.canRetryTurn = false;
-        room.lastAction += ` Martyre 🔥 lui permet de rejouer !`;
         broadcastRoom(ctx, room);
-        if (player.isBot) scheduleAiTurnWithBroadcast(ctx, room);
-        return;
+        return true;
       }
-      broadcastRoom(ctx, room);
-      setTimeout(() => afterTurnChange(ctx, room), 2000);
-      return;
+      endTurnAfterGuess();
+      return true;
     }
 
-    broadcastRoom(ctx, room);
-    if (player.isBot && room.status === 'playing') {
-      scheduleAiTurnWithBroadcast(ctx, room);
+    room.lastAction = `❌ ${player.name} s'est trompé — ce n'était pas ${guessed?.name ?? '?'}.`;
+    if (player.canRetryTurn) {
+      player.canRetryTurn = false;
+      player.hasGuessedThisTurn = false;
+      room.lastAction += ` Martyre 🔥 lui permet de rejouer !`;
+      broadcastRoom(ctx, room);
+      if (player.isBot) scheduleAiTurnWithBroadcast(ctx, room);
+      return true;
     }
+    endTurnAfterGuess();
+    return true;
   };
 
   return ctx;
@@ -755,6 +779,7 @@ export function createHumanPlayer(socketId: string, name: string, isHost: boolea
     guessesCorrect: [],
     canAskSecondQuestion: false,
     canRetryTurn: false,
+    hasGuessedThisTurn: false,
   };
 }
 

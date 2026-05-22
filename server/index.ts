@@ -300,6 +300,21 @@ io.on('connection', (socket: Socket) => {
     const player = room.players.get(playerId)!;
     const target = room.players.get(targetPlayerId);
 
+    if (room.playerOrder[room.currentTurnIndex] !== playerId) {
+      callback({ success: false, message: 'Ce n\'est pas votre tour.' });
+      return;
+    }
+
+    if (player.hasGuessedThisTurn) {
+      callback({ success: false, message: 'Vous avez déjà deviné ce tour-ci.' });
+      return;
+    }
+
+    if (room.pendingQuestion && !room.pendingQuestion.blocked) {
+      callback({ success: false, message: 'Une question est en cours — choisissez entre question ou devinette.' });
+      return;
+    }
+
     if (!target?.characterId) {
       callback({ success: false, message: 'Joueur introuvable.' });
       return;
@@ -320,7 +335,11 @@ io.on('connection', (socket: Socket) => {
 
     const isCorrect = characterId === target.characterId;
 
-    ctx.performGuess(room, playerId, targetPlayerId, characterId);
+    const performed = ctx.performGuess(room, playerId, targetPlayerId, characterId);
+    if (!performed) {
+      callback({ success: false, message: 'Devinette impossible pour le moment.' });
+      return;
+    }
 
     callback({
       success: isCorrect,

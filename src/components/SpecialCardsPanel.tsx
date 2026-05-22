@@ -44,7 +44,7 @@ export default function SpecialCardsPanel({ cards, isMyTurn, canBlock, onUse }: 
 
   return (
     <div className="special-cards">
-      <p className="special-cards-note">3 cartes tirées au hasard par partie</p>
+      <p className="special-cards-note">3 cartes uniques tirées au hasard par partie</p>
       {cards.map((cardType) => {
         const info = SPECIAL_CARDS[cardType];
         const { canUse, hint } = getUsability(cardType, isMyTurn, canBlock);

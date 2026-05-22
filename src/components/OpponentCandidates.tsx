@@ -4,6 +4,7 @@ interface OpponentCandidatesProps {
   opponents: { id: string; name: string; isBot?: boolean }[];
   resolvedByOpponent: Record<string, Character[]>;
   guessedIds: string[];
+  canGuess?: boolean;
   onShowInfo?: (character: Character) => void;
   onQuickGuess?: (targetId: string, characterId: string) => void;
 }
@@ -12,6 +13,7 @@ export default function OpponentCandidates({
   opponents,
   resolvedByOpponent,
   guessedIds,
+  canGuess = false,
   onShowInfo,
   onQuickGuess,
 }: OpponentCandidatesProps) {
@@ -61,7 +63,7 @@ export default function OpponentCandidates({
               <p className="candidate-empty">Aucun candidat actif — affinez vos questions</p>
             )}
 
-            {!isGuessed && count === 1 && (
+            {!isGuessed && count === 1 && canGuess && (
               <button
                 type="button"
                 className="btn btn-sm btn-success candidate-quick-guess"

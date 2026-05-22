@@ -8,7 +8,7 @@ import type {
   GuessResult,
 } from '../types';
 import { ATTRIBUTE_QUESTIONS } from '../types';
-import { filterCandidatesByEliminated, resolveOpponentCharactersForAll } from '../utils/candidates';
+import { computeOpponentCandidates, resolveOpponentCharactersForAll } from '../utils/candidates';
 import CharacterGrid from './CharacterGrid';
 import BoardFilters from './BoardFilters';
 import SpecialCardsPanel from './SpecialCardsPanel';
@@ -71,7 +71,8 @@ export default function Game({
   const isMyTurn = gameState.currentTurnPlayerId === playerId;
   const opponents = gameState.players.filter((p) => p.id !== playerId);
   const pending = gameState.pendingQuestion;
-  const canAsk = isMyTurn && !pending;
+  const canAsk = isMyTurn && !pending && !privateState.hasGuessedThisTurn;
+  const canGuess = isMyTurn && !privateState.hasGuessedThisTurn && !pending;
   const canBlock = pending && !pending.blocked && pending.askerId !== playerId;
   const mustAnswer = pending
     && !pending.blocked
@@ -87,11 +88,14 @@ export default function Game({
   const isAiTurn = currentPlayer?.isBot && !gameState.pendingQuestion;
 
   const displayCandidates = useMemo(
-    () => filterCandidatesByEliminated(
-      privateState.opponentCandidates ?? {},
+    () => computeOpponentCandidates(
+      opponents,
+      gameState.activeCharacters,
+      privateState.characterId,
       privateState.eliminated,
+      privateState.opponentCandidates ?? {},
     ),
-    [privateState.opponentCandidates, privateState.eliminated],
+    [opponents, gameState.activeCharacters, privateState.characterId, privateState.eliminated, privateState.opponentCandidates],
   );
 
   const resolvedByOpponent = useMemo(
@@ -314,6 +318,8 @@ export default function Game({
                       <button
                         type="button"
                         className="btn btn-sm btn-success opponent-guess-btn"
+                        disabled={!canGuess}
+                        title={!canGuess ? (privateState.hasGuessedThisTurn ? 'Une devinette par tour' : 'Ce n\'est pas votre tour') : undefined}
                         onClick={() => setGuessModal({ targetId: opp.id, targetName: opp.name })}
                       >
                         Deviner
@@ -324,12 +330,13 @@ export default function Game({
               ))}
             </div>
 
-            <h3 className="panel-section-title">Candidats restants</h3>
+            <h3 className="panel-section-title">Candidats restants (non éliminés)</h3>
             <div className="opponent-candidates-scroll">
               <OpponentCandidates
                 opponents={opponents}
                 resolvedByOpponent={resolvedByOpponent}
                 guessedIds={me.guessesCorrect}
+                canGuess={canGuess}
                 onShowInfo={setInfoCharacter}
                 onQuickGuess={(targetId, characterId) => {
                   const opp = opponents.find((o) => o.id === targetId);
@@ -437,7 +444,13 @@ export default function Game({
             <h3 className="panel-section-title">Poser une question</h3>
             {!canAsk && !mustAnswer && (
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                {pending ? (mustAnswer ? 'Répondez à la question ci-dessus.' : 'En attente des réponses…') : 'Ce n\'est pas votre tour.'}
+                {pending
+                  ? (mustAnswer ? 'Répondez à la question ci-dessus.' : 'En attente des réponses…')
+                  : !isMyTurn
+                    ? 'Ce n\'est pas votre tour.'
+                    : privateState.hasGuessedThisTurn
+                      ? 'Vous avez deviné ce tour-ci — le tour va passer.'
+                      : 'Choisissez une question ou devinez un adversaire.'}
               </p>
             )}
 
