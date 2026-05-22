@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Character, CharacterCategory } from '../types';
 import { CATEGORY_LABELS } from '../types';
+import { getCharacterLifeYears } from '../data/characterLifeDates';
 
 interface CharacterEncyclopediaProps {
   characters: Character[];
@@ -46,7 +47,9 @@ export default function CharacterEncyclopedia({ characters, onSelect }: Characte
         ))}
       </div>
       <div className="encyclopedia-list">
-        {filtered.map((char) => (
+        {filtered.map((char) => {
+          const lifeYears = getCharacterLifeYears(char.id);
+          return (
           <button
             key={char.id}
             type="button"
@@ -54,11 +57,17 @@ export default function CharacterEncyclopedia({ characters, onSelect }: Characte
             onClick={() => onSelect(char)}
           >
             <span className="emoji">{char.emoji}</span>
-            <span className="name">{char.name}</span>
-            <span className="hint">{char.hint}</span>
+            <div className="encyclopedia-text">
+              <span className="name">{char.name}</span>
+              {lifeYears && (
+                <span className="dates">{lifeYears}</span>
+              )}
+              <span className="hint">{char.hint}</span>
+            </div>
             <span className="info-icon">ℹ️</span>
           </button>
-        ))}
+          );
+        })}
         {filtered.length === 0 && (
           <p className="candidate-empty">Aucun personnage trouvé.</p>
         )}

@@ -1550,7 +1550,7 @@ input {
 
 .encyclopedia-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
@@ -1561,6 +1561,13 @@ input {
   cursor: pointer;
   font-family: inherit;
   font-size: 0.85rem;
+}
+
+.encyclopedia-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
 .encyclopedia-item:hover {
@@ -1574,6 +1581,12 @@ input {
 
 .encyclopedia-item .name {
   font-weight: 600;
+}
+
+.encyclopedia-item .dates {
+  font-size: 0.72rem;
+  color: var(--gold);
+  font-weight: 500;
 }
 
 .encyclopedia-item .hint {
@@ -1813,6 +1826,13 @@ input {
   font-size: 0.65rem;
   font-weight: 600;
   line-height: 1.2;
+}
+
+.selection-card .dates {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  line-height: 1.1;
+  margin-top: 0.15rem;
 }
 
 .selection-card .taken-label,

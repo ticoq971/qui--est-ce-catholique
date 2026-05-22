@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CHARACTERS } from '../data/characters';
+import { getCharacterLifeYears } from '../data/characterLifeDates';
 import type { Character, GameStatePublic, PlayerPrivate } from '../types';
 import CharacterInfoModal from './CharacterInfoModal';
 
@@ -71,6 +72,7 @@ export default function CharacterSelection({
             <div className="selection-grid">
               {boardCharacters.map((char) => {
                 const isMine = char.id === myId;
+                const lifeYears = getCharacterLifeYears(char.id);
 
                 return (
                   <div
@@ -85,6 +87,9 @@ export default function CharacterSelection({
                     >
                       <span className="emoji">{char.emoji}</span>
                       <span className="name">{char.name}</span>
+                      {lifeYears && (
+                        <span className="dates">{lifeYears}</span>
+                      )}
                       {isMine && <span className="mine-label">Votre choix</span>}
                     </button>
                     <button
