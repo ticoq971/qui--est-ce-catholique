@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { CHARACTERS } from '../data/characters';
 import type { Character, GameStatePublic, PlayerPrivate } from '../types';
 import CharacterInfoModal from './CharacterInfoModal';
 
@@ -26,10 +27,15 @@ export default function CharacterSelection({
   const allReady = humans.every((p) => p.hasSelectedCharacter);
   const me = gameState.players.find((p) => p.id === playerId);
 
-  const sorted = [...allCharacters].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const boardCharacters = useMemo(() => {
+    const source = allCharacters.length > 0
+      ? allCharacters
+      : CHARACTERS.filter((c) => gameState.activeCharacters.includes(c.id));
+    return [...source].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  }, [allCharacters, gameState.activeCharacters]);
 
   return (
-    <div className="app">
+    <div className="app character-selection-page">
       <div className="character-selection">
         <header className="selection-header">
           <h2>Choisissez votre personnage</h2>
@@ -43,48 +49,28 @@ export default function CharacterSelection({
           )}
         </header>
 
-        <div className="selection-layout">
-          <aside className="selection-sidebar panel">
-            <h3>Joueurs</h3>
-            <ul className="selection-players">
-              {gameState.players.map((player) => (
-                <li key={player.id} className={player.hasSelectedCharacter ? 'ready' : ''}>
-                  <div className="player-avatar">{player.name.charAt(0).toUpperCase()}</div>
-                  <span>
-                    {player.name}
-                    {player.isBot && ' 🤖'}
-                    {player.id === playerId && ' (vous)'}
-                  </span>
-                  <span className="selection-ready-badge">
-                    {player.isBot ? '—' : player.hasSelectedCharacter ? '✅' : '…'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {myId && (
-              <div className="selection-my-choice">
-                <strong>Votre choix</strong>
-                <div className="selection-my-choice-card">
-                  <span>{allCharacters.find((c) => c.id === myId)?.emoji}</span>
-                  <span>{privateState.characterName}</span>
-                </div>
-              </div>
-            )}
-            {!myId && me && !me.isBot && (
-              <p className="selection-hint">Cliquez sur un personnage disponible ci-dessous.</p>
-            )}
-            {allReady && !gameState.isVsAI && (
-              <p className="selection-hint success">Tous les joueurs ont choisi — la partie va commencer…</p>
-            )}
-            <button type="button" className="btn btn-outline" style={{ marginTop: '1rem', width: '100%' }} onClick={onLeave}>
-              Quitter
-            </button>
-          </aside>
+        {!myId && me && !me.isBot && (
+          <div className="selection-cta">
+            👇 <strong>Cliquez sur une carte</strong> dans la grille pour choisir votre personnage
+          </div>
+        )}
 
-          <main className="selection-grid-panel panel">
-            <h3>Personnages disponibles ({allCharacters.length})</h3>
+        {myId && (
+          <div className="selection-cta selected">
+            ✅ Vous avez choisi <strong>{privateState.characterName}</strong>
+            {allReady && !gameState.isVsAI ? ' — en attente des autres joueurs…' : ''}
+          </div>
+        )}
+
+        <main className="selection-grid-panel panel">
+          <h3>Personnages disponibles ({boardCharacters.length})</h3>
+          {boardCharacters.length === 0 ? (
+            <p className="selection-empty">
+              Chargement des personnages… Si rien n&apos;apparaît, quittez et relancez la partie.
+            </p>
+          ) : (
             <div className="selection-grid">
-              {sorted.map((char) => {
+              {boardCharacters.map((char) => {
                 const isTaken = taken.has(char.id) && char.id !== myId;
                 const isMine = char.id === myId;
 
@@ -108,7 +94,10 @@ export default function CharacterSelection({
                     <button
                       type="button"
                       className="character-info-btn"
-                      onClick={() => setInfoCharacter(char)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoCharacter(char);
+                      }}
                       aria-label={`Infos sur ${char.name}`}
                     >
                       ℹ️
@@ -117,8 +106,30 @@ export default function CharacterSelection({
                 );
               })}
             </div>
-          </main>
-        </div>
+          )}
+        </main>
+
+        <aside className="selection-sidebar panel">
+          <h3>Joueurs</h3>
+          <ul className="selection-players">
+            {gameState.players.map((player) => (
+              <li key={player.id} className={player.hasSelectedCharacter ? 'ready' : ''}>
+                <div className="player-avatar">{player.name.charAt(0).toUpperCase()}</div>
+                <span>
+                  {player.name}
+                  {player.isBot && ' 🤖'}
+                  {player.id === playerId && ' (vous)'}
+                </span>
+                <span className="selection-ready-badge">
+                  {player.isBot ? '—' : player.hasSelectedCharacter ? '✅' : '…'}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="btn btn-outline selection-leave-btn" onClick={onLeave}>
+            Quitter
+          </button>
+        </aside>
       </div>
 
       <CharacterInfoModal character={infoCharacter} onClose={() => setInfoCharacter(null)} />
