@@ -16,6 +16,7 @@ import { dealSpecialCardsToPlayers } from './specialCards';
 import {
   copyEliminatedByOpponent,
   initEliminatedByOpponent,
+  seedOwnCharacterOnOpponentBoards,
   type EliminatedByOpponent,
 } from './elimination';
 import type { GuessAttemptEntry } from '../src/types';
@@ -158,9 +159,9 @@ function getPlayerPublic(player: Player, room: Room): PlayerPublic {
     isHost: player.isHost,
     isBot: player.isBot,
     connected: player.connected,
-    guessesCorrect: [...player.guessesCorrect],
-    eliminatedFromGame: player.eliminatedFromGame,
-    specialCardsUsed: [...player.specialCardsUsed],
+    guessesCorrect: [...(player.guessesCorrect ?? [])],
+    eliminatedFromGame: player.eliminatedFromGame ?? false,
+    specialCardsUsed: [...(player.specialCardsUsed ?? [])],
     hasAnswered: false,
     answeredYes: null,
     hasSelectedCharacter: room.status === 'selecting' ? player.characterId !== null : undefined,
@@ -212,9 +213,9 @@ export function getGameStatePublic(room: Room): GameStatePublic {
       : null,
     lastAction: room.lastAction,
     revelationResult: room.revelationResult,
-    activeCharacters: [...room.activeCharacterIds],
-    questionHistory: [...room.questionHistory],
-    guessHistory: [...room.guessHistory],
+    activeCharacters: [...(room.activeCharacterIds ?? [])],
+    questionHistory: [...(room.questionHistory ?? [])],
+    guessHistory: [...(room.guessHistory ?? [])],
     aiThinking: room.aiThinking,
   };
 }
@@ -224,8 +225,8 @@ function getPlayerPrivate(room: Room, player: Player): PlayerPrivate {
   return {
     characterId: player.characterId,
     characterName: char?.name ?? null,
-    eliminatedByOpponent: copyEliminatedByOpponent(player.eliminatedByOpponent),
-    specialCards: player.specialCards.filter((c) => !player.specialCardsUsed.includes(c)),
+    eliminatedByOpponent: copyEliminatedByOpponent(player.eliminatedByOpponent ?? {}),
+    specialCards: (player.specialCards ?? []).filter((c) => !(player.specialCardsUsed ?? []).includes(c)),
     canAskSecondQuestion: player.canAskSecondQuestion,
     canRetryTurn: player.canRetryTurn,
     hasGuessedThisTurn: player.hasGuessedThisTurn,
@@ -400,6 +401,7 @@ function beginPlaying(room: Room, ctx?: ServerContext): boolean {
   for (const playerId of room.playerOrder) {
     const player = room.players.get(playerId)!;
     player.eliminatedByOpponent = initEliminatedByOpponent(room, playerId);
+    seedOwnCharacterOnOpponentBoards(player);
     player.guessesCorrect = [];
     player.eliminatedFromGame = false;
     player.canAskSecondQuestion = false;

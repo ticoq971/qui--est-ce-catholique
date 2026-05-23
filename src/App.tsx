@@ -1,4 +1,5 @@
 import { useGameSocket } from './hooks/useGameSocket';
+import { normalizePrivateState } from './utils/normalizeState';
 import Home from './components/Home';
 import Lobby from './components/Lobby';
 import CharacterSelection from './components/CharacterSelection';
@@ -67,7 +68,10 @@ export default function App() {
   return (
     <Game
       gameState={game.gameState}
-      privateState={game.privateState!}
+      privateState={normalizePrivateState(
+        game.privateState,
+        game.gameState.players.filter((p) => p.id !== game.playerId).map((p) => p.id),
+      )}
       allCharacters={game.allCharacters}
       playerId={game.playerId!}
       onAskQuestion={game.askQuestion}

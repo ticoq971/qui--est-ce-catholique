@@ -16,15 +16,16 @@ export default function BoardFilters({
   onBulkEliminate,
   onRestoreAll,
 }: BoardFiltersProps) {
+  const eliminatedIds = eliminated ?? [];
   const [filterMode, setFilterMode] = useState<'attribute' | 'category'>('attribute');
   const [selectedAttr, setSelectedAttr] = useState<AttributeKey>('homme');
   const [selectedCategory, setSelectedCategory] = useState<CharacterCategory | 'all'>('all');
 
-  const activeCount = characters.length - eliminated.length;
+  const activeCount = characters.length - eliminatedIds.length;
 
   const eliminateWhere = (predicate: (c: Character) => boolean) => {
     const ids = characters
-      .filter((c) => predicate(c) && !eliminated.includes(c.id))
+      .filter((c) => predicate(c) && !eliminatedIds.includes(c.id))
       .map((c) => c.id);
     if (ids.length > 0) onBulkEliminate(ids);
   };

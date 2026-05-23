@@ -69,6 +69,8 @@ export default function Game({
   const isMultiplayer = !gameState.isVsAI;
   const me = gameState.players.find((p) => p.id === playerId)!;
   const isHost = me.isHost;
+  const myGuessesCorrect = me.guessesCorrect ?? [];
+  const eliminatedByOpponent = privateState.eliminatedByOpponent ?? {};
 
   const isMyTurn = gameState.currentTurnPlayerId === playerId;
   const opponents = gameState.players.filter((p) => p.id !== playerId);
@@ -94,12 +96,12 @@ export default function Game({
   const displayCandidates = useMemo(
     () => computeOpponentCandidates(
       playableOpponents,
-      gameState.activeCharacters,
+      gameState.activeCharacters ?? [],
       privateState.characterId,
-      privateState.eliminatedByOpponent ?? {},
+      eliminatedByOpponent,
       privateState.opponentCandidates ?? {},
     ),
-    [playableOpponents, gameState.activeCharacters, privateState.characterId, privateState.eliminatedByOpponent, privateState.opponentCandidates],
+    [playableOpponents, gameState.activeCharacters, privateState.characterId, eliminatedByOpponent, privateState.opponentCandidates],
   );
 
   const primaryOpponentId = getPrimaryOpponentId(playableOpponents);
@@ -272,7 +274,7 @@ export default function Game({
                 className="btn btn-sm btn-danger"
                 style={{ marginTop: '0.75rem' }}
                 onClick={() => onUseSpecialCard('intercession')}
-                disabled={privateState.specialCards.includes('intercession') === false}
+                disabled={!(privateState.specialCards ?? []).includes('intercession')}
               >
                 🙏 Jouer Intercession
               </button>
@@ -299,7 +301,10 @@ export default function Game({
 
         {isMultiplayer && (
           <div className="multiplayer-boards">
-            <h3 className="multiplayer-boards-title">Plateaux par adversaire</h3>
+            <h3 className="multiplayer-boards-title">Vos plateaux par adversaire</h3>
+            <p className="multiplayer-boards-hint" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Éliminez vous-même les personnages — seules vos actions comptent ici.
+            </p>
             <div className="multiplayer-boards-scroll">
               {playableOpponents.map((opp) => (
                 <OpponentBoardPanel
@@ -310,7 +315,7 @@ export default function Game({
                   isIdentified={false}
                   candidateCount={resolvedByOpponent[opp.id]?.length ?? 0}
                   characters={allCharacters}
-                  eliminated={privateState.eliminatedByOpponent[opp.id] ?? []}
+                  eliminated={eliminatedByOpponent[opp.id] ?? []}
                   compact
                   onToggle={(charId) => onToggleEliminated(opp.id, charId)}
                   onBulkEliminate={(ids) => onBulkEliminate(opp.id, ids)}
@@ -356,7 +361,7 @@ export default function Game({
             <h3 className="panel-section-title">Adversaires</h3>
             <div className="opponents-tracker">
               {opponents.map((opp) => (
-                <div key={opp.id} className={`opponent-row ${opp.eliminatedFromGame ? 'eliminated-player' : ''} ${me.guessesCorrect.includes(opp.id) ? 'guessed' : ''}`}>
+                <div key={opp.id} className={`opponent-row ${opp.eliminatedFromGame ? 'eliminated-player' : ''} ${myGuessesCorrect.includes(opp.id) ? 'guessed' : ''}`}>
                   <div className="player-avatar">{opp.name.charAt(0)}</div>
                   <span>
                     {opp.name}
@@ -368,7 +373,7 @@ export default function Game({
                   </span>
                   {opp.eliminatedFromGame ? (
                     <span className="status">💀 Éliminé</span>
-                  ) : me.guessesCorrect.includes(opp.id) ? (
+                  ) : myGuessesCorrect.includes(opp.id) ? (
                     <span className="status">✅ Identifié</span>
                   ) : (
                     <div className="opponent-row-actions">
@@ -395,7 +400,7 @@ export default function Game({
               <OpponentCandidates
                 opponents={playableOpponents}
                 resolvedByOpponent={resolvedByOpponent}
-                guessedIds={me.guessesCorrect}
+                guessedIds={myGuessesCorrect}
                 canGuess={canGuess}
                 onShowInfo={setInfoCharacter}
                 onQuickGuess={(targetId, characterId) => {
@@ -410,7 +415,7 @@ export default function Game({
 
             <h3 className="panel-section-title">Cartes spéciales</h3>
             <SpecialCardsPanel
-              cards={privateState.specialCards}
+              cards={privateState.specialCards ?? []}
               isMyTurn={isMyTurn}
               canBlock={!!canBlock}
               onUse={(card) => {
@@ -424,7 +429,7 @@ export default function Game({
               <div style={{ marginTop: '0.75rem' }}>
                 <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Choisissez un adversaire :</p>
                 <div className="player-select">
-                  {opponents.filter(o => !me.guessesCorrect.includes(o.id)).map(o => (
+                  {opponents.filter(o => !myGuessesCorrect.includes(o.id)).map(o => (
                     <button
                       key={o.id}
                       className={`player-chip ${revelationTarget === o.id ? 'selected' : ''}`}
@@ -487,7 +492,7 @@ export default function Game({
                 isIdentified={false}
                 candidateCount={resolvedByOpponent[primaryOpponentId]?.length ?? 0}
                 characters={allCharacters}
-                eliminated={getEliminatedForOpponent(privateState.eliminatedByOpponent, primaryOpponentId)}
+                eliminated={getEliminatedForOpponent(eliminatedByOpponent, primaryOpponentId)}
                 onToggle={(charId) => onToggleEliminated(primaryOpponentId, charId)}
                 onBulkEliminate={(ids) => onBulkEliminate(primaryOpponentId, ids)}
                 onRestoreAll={() => onRestoreAllEliminated(primaryOpponentId)}
@@ -631,7 +636,7 @@ export default function Game({
 
       {/* Guess modal */}
       {guessModal && (() => {
-        const targetEliminated = privateState.eliminatedByOpponent[guessModal.targetId] ?? [];
+        const targetEliminated = eliminatedByOpponent[guessModal.targetId] ?? [];
         const notEliminated = (c: Character) => !targetEliminated.includes(c.id);
         const targetCandidateIds = (displayCandidates[guessModal.targetId] ?? [])
           .filter((id) => !targetEliminated.includes(id));

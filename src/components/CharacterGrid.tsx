@@ -9,16 +9,17 @@ interface CharacterGridProps {
 }
 
 export default function CharacterGrid({ characters, eliminated, onToggle, onShowInfo, compact = false }: CharacterGridProps) {
+  const eliminatedSet = eliminated ?? [];
   return (
     <div className={`character-grid ${compact ? 'character-grid-compact' : ''}`}>
       {characters.map((char) => (
         <div
           key={char.id}
-          className={`character-card-wrap ${eliminated.includes(char.id) ? 'eliminated' : ''}`}
+          className={`character-card-wrap ${eliminatedSet.includes(char.id) ? 'eliminated' : ''}`}
         >
           <button
             type="button"
-            className={`character-card ${eliminated.includes(char.id) ? 'eliminated' : ''}`}
+            className={`character-card ${eliminatedSet.includes(char.id) ? 'eliminated' : ''}`}
             onClick={() => onToggle(char.id)}
             title="Cliquer pour éliminer / restaurer"
           >

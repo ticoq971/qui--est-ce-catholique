@@ -10,7 +10,6 @@ import {
   initPlayerKnowledge,
   type PlayerKnowledge,
 } from './deduction';
-import { syncEliminationsFromKnowledge } from './elimination';
 
 const BOT_NAMES = ['Sœur Thérèse IA', 'Frère François IA', 'Monseigneur IA'];
 
@@ -83,11 +82,6 @@ function pickRevelationTarget(knowledge: PlayerKnowledge): { oppId: string; attr
     if (attr) return { oppId, attributeKey: attr };
   }
   return null;
-}
-
-function syncEliminationsFromKnowledgeForPlayer(room: Room, playerId: string, knowledge: PlayerKnowledge) {
-  const player = room.players.get(playerId)!;
-  syncEliminationsFromKnowledge(room, player, knowledge);
 }
 
 function clearAiTimer(roomCode: string) {
@@ -214,7 +208,6 @@ export function onQuestionResolvedForKnowledge(
     const knowledge = room.playerKnowledge.get(playerId);
     if (!knowledge) continue;
     applyAnswersToKnowledge(knowledge, attributeKey, answers);
-    syncEliminationsFromKnowledgeForPlayer(room, playerId, knowledge);
   }
 }
 
@@ -229,7 +222,6 @@ export function onRevelationForKnowledge(
   if (!knowledge) return;
 
   applyRevelationToKnowledge(knowledge, targetId, attributeKey, value);
-  syncEliminationsFromKnowledgeForPlayer(room, playerId, knowledge);
 }
 
 export function initAllPlayerKnowledge(room: Room) {

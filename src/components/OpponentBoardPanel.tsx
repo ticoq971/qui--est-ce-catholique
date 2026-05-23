@@ -30,7 +30,8 @@ export default function OpponentBoardPanel({
   onRestoreAll,
   onShowInfo,
 }: OpponentBoardPanelProps) {
-  const activeCount = characters.length - eliminated.length;
+  const eliminatedIds = eliminated ?? [];
+  const activeCount = characters.length - eliminatedIds.length;
 
   return (
     <section className={`opponent-board-panel ${compact ? 'compact' : ''} ${isIdentified ? 'identified' : ''}`}>
@@ -55,13 +56,13 @@ export default function OpponentBoardPanel({
         <>
           <BoardFilters
             characters={characters}
-            eliminated={eliminated}
+            eliminated={eliminatedIds}
             onBulkEliminate={onBulkEliminate}
             onRestoreAll={onRestoreAll}
           />
           <CharacterGrid
             characters={characters}
-            eliminated={eliminated}
+            eliminated={eliminatedIds}
             onToggle={onToggle}
             onShowInfo={onShowInfo}
             compact={compact}

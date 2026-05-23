@@ -9,6 +9,7 @@ import type {
   AttributeKey,
   SpecialCardType,
 } from '../types';
+import { normalizeRoomPayload } from '../utils/normalizeState';
 
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL?.trim() ||
@@ -67,11 +68,12 @@ export function useGameSocket() {
   const [error, setError] = useState<string | null>(null);
 
   const applyPayload = useCallback((payload: RoomJoinedPayload & { success?: boolean }) => {
-    setGameState(payload.gameState);
-    setPrivateState(payload.privateState);
-    setAllCharacters(payload.allCharacters);
-    setPlayerId(payload.playerId);
-    saveSession(payload.gameState.roomCode, payload.playerId);
+    const normalized = normalizeRoomPayload(payload);
+    setGameState(normalized.gameState);
+    setPrivateState(normalized.privateState);
+    setAllCharacters(normalized.allCharacters);
+    setPlayerId(normalized.playerId);
+    saveSession(normalized.gameState.roomCode, normalized.playerId);
   }, []);
 
   useEffect(() => {
@@ -195,7 +197,7 @@ export function useGameSocket() {
   const toggleEliminated = useCallback((opponentId: string, characterId: string) => {
     setPrivateState((prev) => {
       if (!prev) return prev;
-      const boards = { ...prev.eliminatedByOpponent };
+      const boards = { ...(prev.eliminatedByOpponent ?? {}) };
       const board = [...(boards[opponentId] ?? [])];
       const idx = board.indexOf(characterId);
       if (idx >= 0) board.splice(idx, 1);
@@ -210,7 +212,7 @@ export function useGameSocket() {
     if (characterIds.length === 0) return;
     setPrivateState((prev) => {
       if (!prev) return prev;
-      const boards = { ...prev.eliminatedByOpponent };
+      const boards = { ...(prev.eliminatedByOpponent ?? {}) };
       const set = new Set([...(boards[opponentId] ?? []), ...characterIds]);
       boards[opponentId] = [...set];
       return { ...prev, eliminatedByOpponent: boards };
@@ -221,7 +223,7 @@ export function useGameSocket() {
   const restoreAllEliminated = useCallback((opponentId?: string) => {
     setPrivateState((prev) => {
       if (!prev) return prev;
-      const boards = { ...prev.eliminatedByOpponent };
+      const boards = { ...(prev.eliminatedByOpponent ?? {}) };
       if (opponentId) {
         boards[opponentId] = [];
       } else {

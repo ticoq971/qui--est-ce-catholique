@@ -1,8 +1,6 @@
 import type { Room } from './gameEngine';
-import type { PlayerKnowledge } from './deduction';
 
 export type EliminatedByOpponent = Record<string, string[]>;
-
 export function initEliminatedByOpponent(room: Room, playerId: string): EliminatedByOpponent {
   const boards: EliminatedByOpponent = {};
   for (const oppId of room.playerOrder) {
@@ -40,24 +38,14 @@ export function bulkEliminateForOpponent(
   player.eliminatedByOpponent[oppId] = [...set];
 }
 
-export function syncEliminationsFromKnowledge(
-  room: Room,
+/** Au début de partie : votre personnage secret n'est pas un candidat pour les adversaires */
+export function seedOwnCharacterOnOpponentBoards(
   player: { characterId: string | null; eliminatedByOpponent: EliminatedByOpponent },
-  knowledge: PlayerKnowledge,
 ): void {
-  for (const [oppId, possibles] of knowledge.possibleByOpponent) {
+  if (!player.characterId) return;
+  for (const oppId of Object.keys(player.eliminatedByOpponent)) {
     const board = ensureEliminatedBoard(player, oppId);
-    const elim = new Set(board);
-
-    for (const id of room.activeCharacterIds) {
-      if (id === player.characterId) {
-        elim.add(id);
-        continue;
-      }
-      if (!possibles.has(id)) elim.add(id);
-    }
-
-    player.eliminatedByOpponent[oppId] = [...elim];
+    if (!board.includes(player.characterId)) board.push(player.characterId);
   }
 }
 

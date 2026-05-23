@@ -6,19 +6,22 @@ import type { Character } from '../types';
  */
 export function computeOpponentCandidates(
   opponents: { id: string }[],
-  activeCharacterIds: string[],
+  activeCharacterIds: string[] | undefined,
   ownCharacterId: string | null,
-  eliminatedByOpponent: Record<string, string[]>,
-  serverKnowledge: Record<string, string[]>,
+  eliminatedByOpponent: Record<string, string[]> | undefined,
+  serverKnowledge: Record<string, string[]> | undefined,
 ): Record<string, string[]> {
+  const activeIds = activeCharacterIds ?? [];
+  const elimBoards = eliminatedByOpponent ?? {};
+  const knowledge = serverKnowledge ?? {};
   const result: Record<string, string[]> = {};
 
   for (const opp of opponents) {
-    const elim = new Set(eliminatedByOpponent[opp.id] ?? []);
-    const deduced = serverKnowledge[opp.id];
+    const elim = new Set(elimBoards[opp.id] ?? []);
+    const deduced = knowledge[opp.id];
     const basePool = deduced?.length
       ? deduced
-      : activeCharacterIds.filter((id) => id !== ownCharacterId);
+      : activeIds.filter((id) => id !== ownCharacterId);
 
     result[opp.id] = basePool.filter(
       (id) => id !== ownCharacterId && !elim.has(id),
@@ -67,16 +70,17 @@ export function getPrimaryOpponentId(
 }
 
 export function getEliminatedForOpponent(
-  eliminatedByOpponent: Record<string, string[]>,
+  eliminatedByOpponent: Record<string, string[]> | null | undefined,
   opponentId: string | null,
 ): string[] {
-  if (!opponentId) return [];
+  if (!opponentId || !eliminatedByOpponent) return [];
   return eliminatedByOpponent[opponentId] ?? [];
 }
 
 export function mergeAllEliminated(
-  eliminatedByOpponent: Record<string, string[]>,
+  eliminatedByOpponent: Record<string, string[]> | null | undefined,
 ): string[] {
+  if (!eliminatedByOpponent) return [];
   const set = new Set<string>();
   for (const ids of Object.values(eliminatedByOpponent)) {
     for (const id of ids) set.add(id);

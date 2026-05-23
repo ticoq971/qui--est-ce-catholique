@@ -30,7 +30,7 @@ export default function CharacterSelection({
   const boardCharacters = useMemo(() => {
     const source = allCharacters.length > 0
       ? allCharacters
-      : CHARACTERS.filter((c) => gameState.activeCharacters.includes(c.id));
+      : CHARACTERS.filter((c) => (gameState.activeCharacters ?? []).includes(c.id));
     return [...source].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }, [allCharacters, gameState.activeCharacters]);
 
