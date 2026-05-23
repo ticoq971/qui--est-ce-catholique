@@ -176,12 +176,12 @@ export function useGameSocket() {
     });
   }, []);
 
-  const askQuestion = useCallback((attributeKey: AttributeKey) => {
-    getSocket().emit('askQuestion', attributeKey);
+  const askQuestion = useCallback((attributeKey: AttributeKey, targetPlayerId?: string) => {
+    getSocket().emit('askQuestion', attributeKey, targetPlayerId);
   }, []);
 
-  const askCustomQuestion = useCallback((text: string) => {
-    getSocket().emit('askCustomQuestion', text);
+  const askCustomQuestion = useCallback((text: string, targetPlayerId?: string) => {
+    getSocket().emit('askCustomQuestion', text, targetPlayerId);
   }, []);
 
   const submitAnswer = useCallback((answer: boolean) => {
@@ -192,30 +192,44 @@ export function useGameSocket() {
     getSocket().emit('useSpecialCard', cardType, targetPlayerId, attributeKey);
   }, []);
 
-  const toggleEliminated = useCallback((characterId: string) => {
+  const toggleEliminated = useCallback((opponentId: string, characterId: string) => {
     setPrivateState((prev) => {
       if (!prev) return prev;
-      const eliminated = prev.eliminated.includes(characterId)
-        ? prev.eliminated.filter((id) => id !== characterId)
-        : [...prev.eliminated, characterId];
-      return { ...prev, eliminated };
+      const boards = { ...prev.eliminatedByOpponent };
+      const board = [...(boards[opponentId] ?? [])];
+      const idx = board.indexOf(characterId);
+      if (idx >= 0) board.splice(idx, 1);
+      else board.push(characterId);
+      boards[opponentId] = board;
+      return { ...prev, eliminatedByOpponent: boards };
     });
-    getSocket().emit('toggleEliminated', characterId);
+    getSocket().emit('toggleEliminated', opponentId, characterId);
   }, []);
 
-  const bulkEliminate = useCallback((characterIds: string[]) => {
+  const bulkEliminate = useCallback((opponentId: string, characterIds: string[]) => {
     if (characterIds.length === 0) return;
     setPrivateState((prev) => {
       if (!prev) return prev;
-      const set = new Set([...prev.eliminated, ...characterIds]);
-      return { ...prev, eliminated: [...set] };
+      const boards = { ...prev.eliminatedByOpponent };
+      const set = new Set([...(boards[opponentId] ?? []), ...characterIds]);
+      boards[opponentId] = [...set];
+      return { ...prev, eliminatedByOpponent: boards };
     });
-    getSocket().emit('bulkEliminate', characterIds);
+    getSocket().emit('bulkEliminate', opponentId, characterIds);
   }, []);
 
-  const restoreAllEliminated = useCallback(() => {
-    setPrivateState((prev) => (prev ? { ...prev, eliminated: [] } : prev));
-    getSocket().emit('restoreAllEliminated');
+  const restoreAllEliminated = useCallback((opponentId?: string) => {
+    setPrivateState((prev) => {
+      if (!prev) return prev;
+      const boards = { ...prev.eliminatedByOpponent };
+      if (opponentId) {
+        boards[opponentId] = [];
+      } else {
+        for (const id of Object.keys(boards)) boards[id] = [];
+      }
+      return { ...prev, eliminatedByOpponent: boards };
+    });
+    getSocket().emit('restoreAllEliminated', opponentId);
   }, []);
 
   const guessCharacter = useCallback((targetPlayerId: string, characterId: string): Promise<GuessResult> => {

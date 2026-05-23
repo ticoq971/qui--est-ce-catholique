@@ -45,7 +45,7 @@ export default function App() {
     const privateState = game.privateState ?? {
       characterId: null,
       characterName: null,
-      eliminated: [],
+      eliminatedByOpponent: {},
       specialCards: [],
       canAskSecondQuestion: false,
       canRetryTurn: false,

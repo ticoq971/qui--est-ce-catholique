@@ -5,11 +5,12 @@ interface CharacterGridProps {
   eliminated: string[];
   onToggle: (id: string) => void;
   onShowInfo: (character: Character) => void;
+  compact?: boolean;
 }
 
-export default function CharacterGrid({ characters, eliminated, onToggle, onShowInfo }: CharacterGridProps) {
+export default function CharacterGrid({ characters, eliminated, onToggle, onShowInfo, compact = false }: CharacterGridProps) {
   return (
-    <div className="character-grid">
+    <div className={`character-grid ${compact ? 'character-grid-compact' : ''}`}>
       {characters.map((char) => (
         <div
           key={char.id}

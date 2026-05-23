@@ -8,9 +8,10 @@ import type {
   GuessResult,
 } from '../types';
 import { ATTRIBUTE_QUESTIONS } from '../types';
-import { computeOpponentCandidates, resolveOpponentCharactersForAll } from '../utils/candidates';
-import CharacterGrid from './CharacterGrid';
-import BoardFilters from './BoardFilters';
+import { computeOpponentCandidates, resolveOpponentCharactersForAll, getPrimaryOpponentId, getEliminatedForOpponent } from '../utils/candidates';
+import OpponentBoardPanel from './OpponentBoardPanel';
+import KnownAnswersPanel from './KnownAnswersPanel';
+import GuessHistory from './GuessHistory';
 import SpecialCardsPanel from './SpecialCardsPanel';
 import QuestionHistory from './QuestionHistory';
 import OpponentCandidates from './OpponentCandidates';
@@ -23,13 +24,13 @@ interface GameProps {
   privateState: PlayerPrivate;
   allCharacters: Character[];
   playerId: string;
-  onAskQuestion: (key: AttributeKey) => void;
-  onAskCustomQuestion: (text: string) => void;
+  onAskQuestion: (key: AttributeKey, targetPlayerId?: string) => void;
+  onAskCustomQuestion: (text: string, targetPlayerId?: string) => void;
   onSubmitAnswer: (answer: boolean) => void;
   onUseSpecialCard: (card: SpecialCardType, targetId?: string, attributeKey?: AttributeKey) => void;
-  onToggleEliminated: (characterId: string) => void;
-  onBulkEliminate: (characterIds: string[]) => void;
-  onRestoreAllEliminated: () => void;
+  onToggleEliminated: (opponentId: string, characterId: string) => void;
+  onBulkEliminate: (opponentId: string, characterIds: string[]) => void;
+  onRestoreAllEliminated: (opponentId?: string) => void;
   onGuessCharacter: (targetPlayerId: string, characterId: string) => Promise<GuessResult>;
   onRestart: () => Promise<boolean>;
   onLeave: () => void;
@@ -55,6 +56,7 @@ export default function Game({
   const [selectedGuess, setSelectedGuess] = useState<string | null>(null);
   const [guessResult, setGuessResult] = useState<GuessResult | null>(null);
   const [selectedQuestion, setSelectedQuestion] = useState<AttributeKey | null>(null);
+  const [questionTarget, setQuestionTarget] = useState<string | null>(null);
   const [revelationStep, setRevelationStep] = useState<'idle' | 'pickPlayer' | 'pickAttribute'>('idle');
   const [revelationTarget, setRevelationTarget] = useState<string | null>(null);
   const [concileStep, setConcileStep] = useState(false);
@@ -70,6 +72,7 @@ export default function Game({
 
   const isMyTurn = gameState.currentTurnPlayerId === playerId;
   const opponents = gameState.players.filter((p) => p.id !== playerId);
+  const playableOpponents = opponents.filter((p) => !p.eliminatedFromGame);
   const pending = gameState.pendingQuestion;
   const canAsk = isMyTurn && !pending && !privateState.hasGuessedThisTurn;
   const canGuess = isMyTurn && !privateState.hasGuessedThisTurn && !pending;
@@ -78,7 +81,8 @@ export default function Game({
     && !pending.blocked
     && pending.manualAnswers
     && pending.answers[playerId] === undefined
-    && (pending.isConcile || pending.askerId !== playerId);
+    && !me.eliminatedFromGame
+    && (pending.isConcile ? true : pending.targetPlayerId === playerId);
 
   const myRevelation = gameState.revelationResult?.forPlayerId === playerId
     ? gameState.revelationResult
@@ -89,34 +93,38 @@ export default function Game({
 
   const displayCandidates = useMemo(
     () => computeOpponentCandidates(
-      opponents,
+      playableOpponents,
       gameState.activeCharacters,
       privateState.characterId,
-      privateState.eliminated,
+      privateState.eliminatedByOpponent ?? {},
       privateState.opponentCandidates ?? {},
     ),
-    [opponents, gameState.activeCharacters, privateState.characterId, privateState.eliminated, privateState.opponentCandidates],
+    [playableOpponents, gameState.activeCharacters, privateState.characterId, privateState.eliminatedByOpponent, privateState.opponentCandidates],
   );
 
+  const primaryOpponentId = getPrimaryOpponentId(playableOpponents);
+
   const resolvedByOpponent = useMemo(
-    () => resolveOpponentCharactersForAll(opponents, displayCandidates, allCharacters),
-    [opponents, displayCandidates, allCharacters],
+    () => resolveOpponentCharactersForAll(playableOpponents, displayCandidates, allCharacters),
+    [playableOpponents, displayCandidates, allCharacters],
   );
 
   const handleAsk = () => {
-    if (selectedQuestion) {
-      onAskQuestion(selectedQuestion);
-      setSelectedQuestion(null);
-    }
+    if (!selectedQuestion) return;
+    if (isMultiplayer && !questionTarget) return;
+    onAskQuestion(selectedQuestion, isMultiplayer ? questionTarget! : undefined);
+    setSelectedQuestion(null);
+    setQuestionTarget(null);
   };
 
   const handleAskCustom = () => {
     const text = customQuestion.trim();
-    if (text.length >= 3) {
-      onAskCustomQuestion(text);
-      setCustomQuestion('');
-      setQuestionMode('preset');
-    }
+    if (text.length < 3) return;
+    if (isMultiplayer && !questionTarget) return;
+    onAskCustomQuestion(text, isMultiplayer ? questionTarget! : undefined);
+    setCustomQuestion('');
+    setQuestionMode('preset');
+    setQuestionTarget(null);
   };
 
   const handleGuessSubmit = async () => {
@@ -166,9 +174,11 @@ export default function Game({
             <span className="trophy">🏆</span>
             <h2>{gameState.winnerName} remporte la partie !</h2>
             <p style={{ marginBottom: '1.5rem', color: 'var(--text-muted)' }}>
-              {gameState.players.find(p => p.id === gameState.winnerId)?.isBot
-                ? 'L\'IA a identifié tous vos personnages. Retentez votre chance !'
-                : 'Tous les personnages adverses ont été identifiés.'}
+              {gameState.isVsAI
+                ? (gameState.players.find(p => p.id === gameState.winnerId)?.isBot
+                  ? 'L\'IA a identifié tous vos personnages. Retentez votre chance !'
+                  : 'Tous les personnages adverses ont été identifiés.')
+                : 'Dernier joueur en lice — victoire par élimination !'}
             </p>
             <div className="victory-actions">
               {isHost ? (
@@ -214,18 +224,37 @@ export default function Game({
           <div className="last-action">{gameState.lastAction}</div>
         )}
 
+        {(() => {
+          const lastGuess = gameState.guessHistory?.at(-1);
+          if (!lastGuess || lastGuess.targetPlayerId !== playerId) return null;
+          return (
+            <div className="guess-alert-banner">
+              🎯 <strong>{lastGuess.guesserName}</strong> pense que vous êtes{' '}
+              <strong>{lastGuess.guessedCharacterName}</strong>
+              {lastGuess.success ? ' — et a raison ! ✅' : ' — incorrect ❌'}
+            </div>
+          );
+        })()}
+
         {pending && (
           <div className="pending-question">
             <h4>
               {pending.blocked
                 ? '🙏 Question bloquée par Intercession !'
-                : `${pending.askerName} demande : « ${pending.isCustom ? pending.customText : pending.attributeLabel} »`}
+                : pending.isConcile
+                  ? `${pending.askerName} convoque un Concile : « ${pending.isCustom ? pending.customText : pending.attributeLabel} »`
+                  : pending.targetPlayerName
+                    ? `${pending.askerName} demande à ${pending.targetPlayerName} : « ${pending.isCustom ? pending.customText : pending.attributeLabel} »`
+                    : `${pending.askerName} demande : « ${pending.isCustom ? pending.customText : pending.attributeLabel} »`}
             </h4>
-            {pending.isCustom && (
+            {pending.isConcile && (
+              <span className="history-concile" style={{ fontSize: '0.8rem' }}>⛪ Tous les joueurs actifs répondent</span>
+            )}
+            {pending.isCustom && !pending.isConcile && (
               <span className="history-custom" style={{ fontSize: '0.8rem' }}>Question libre</span>
             )}
-            {!pending.blocked && pending.manualAnswers && Object.keys(pending.answers).length < opponents.length && pending.askerId !== playerId && (
-              <p style={{ fontSize: '0.85rem' }}>En attente des réponses des adversaires…</p>
+            {!pending.blocked && pending.manualAnswers && pending.targetPlayerId && !pending.answers[pending.targetPlayerId] && pending.askerId !== playerId && pending.targetPlayerId !== playerId && (
+              <p style={{ fontSize: '0.85rem' }}>En attente de la réponse de {pending.targetPlayerName}…</p>
             )}
             {Object.keys(pending.answers).length > 0 && (
               <div className="answers">
@@ -268,6 +297,34 @@ export default function Game({
           </div>
         )}
 
+        {isMultiplayer && (
+          <div className="multiplayer-boards">
+            <h3 className="multiplayer-boards-title">Plateaux par adversaire</h3>
+            <div className="multiplayer-boards-scroll">
+              {playableOpponents.map((opp) => (
+                <OpponentBoardPanel
+                  key={opp.id}
+                  opponentId={opp.id}
+                  opponentName={opp.name}
+                  isBot={opp.isBot}
+                  isIdentified={false}
+                  candidateCount={resolvedByOpponent[opp.id]?.length ?? 0}
+                  characters={allCharacters}
+                  eliminated={privateState.eliminatedByOpponent[opp.id] ?? []}
+                  compact
+                  onToggle={(charId) => onToggleEliminated(opp.id, charId)}
+                  onBulkEliminate={(ids) => onBulkEliminate(opp.id, ids)}
+                  onRestoreAll={() => onRestoreAllEliminated(opp.id)}
+                  onShowInfo={setInfoCharacter}
+                />
+              ))}
+              {playableOpponents.length === 0 && (
+                <p className="candidate-empty">Tous les adversaires ont été identifiés !</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="game-layout">
           {/* Left panel */}
           <div className="panel panel-side">
@@ -299,16 +356,19 @@ export default function Game({
             <h3 className="panel-section-title">Adversaires</h3>
             <div className="opponents-tracker">
               {opponents.map((opp) => (
-                <div key={opp.id} className={`opponent-row ${me.guessesCorrect.includes(opp.id) ? 'guessed' : ''}`}>
+                <div key={opp.id} className={`opponent-row ${opp.eliminatedFromGame ? 'eliminated-player' : ''} ${me.guessesCorrect.includes(opp.id) ? 'guessed' : ''}`}>
                   <div className="player-avatar">{opp.name.charAt(0)}</div>
                   <span>
                     {opp.name}
                     {opp.isBot && <span style={{ marginLeft: '0.35rem', opacity: 0.7 }}>🤖</span>}
-                    {!opp.connected && !opp.isBot && (
+                    {opp.eliminatedFromGame && <span className="opponent-eliminated-tag"> 💀 Éliminé</span>}
+                    {!opp.connected && !opp.isBot && !opp.eliminatedFromGame && (
                       <span className="opponent-offline" title="Déconnecté"> ⚡</span>
                     )}
                   </span>
-                  {me.guessesCorrect.includes(opp.id) ? (
+                  {opp.eliminatedFromGame ? (
+                    <span className="status">💀 Éliminé</span>
+                  ) : me.guessesCorrect.includes(opp.id) ? (
                     <span className="status">✅ Identifié</span>
                   ) : (
                     <div className="opponent-row-actions">
@@ -333,7 +393,7 @@ export default function Game({
             <h3 className="panel-section-title">Candidats restants (non éliminés)</h3>
             <div className="opponent-candidates-scroll">
               <OpponentCandidates
-                opponents={opponents}
+                opponents={playableOpponents}
                 resolvedByOpponent={resolvedByOpponent}
                 guessedIds={me.guessesCorrect}
                 canGuess={canGuess}
@@ -408,7 +468,8 @@ export default function Game({
             )}
           </div>
 
-          {/* Center - character grid */}
+          {/* Center - vs IA only */}
+          {!isMultiplayer && (
           <div className="panel panel-board">
             <div className="panel-board-header">
               <h3 className="panel-section-title">Plateau</h3>
@@ -418,30 +479,64 @@ export default function Game({
             </div>
             {showEncyclopedia ? (
               <CharacterEncyclopedia characters={allCharacters} onSelect={setInfoCharacter} />
-            ) : (
-              <>
-                <BoardFilters
-                  characters={allCharacters}
-                  eliminated={privateState.eliminated}
-                  onBulkEliminate={onBulkEliminate}
-                  onRestoreAll={onRestoreAllEliminated}
-                />
-                <CharacterGrid
-                  characters={allCharacters}
-                  eliminated={privateState.eliminated}
-                  onToggle={onToggleEliminated}
-                  onShowInfo={setInfoCharacter}
-                />
-              </>
-            )}
+            ) : primaryOpponentId ? (
+              <OpponentBoardPanel
+                opponentId={primaryOpponentId}
+                opponentName={opponents.find(o => o.id === primaryOpponentId)?.name ?? 'Adversaire'}
+                isBot={opponents.find(o => o.id === primaryOpponentId)?.isBot}
+                isIdentified={false}
+                candidateCount={resolvedByOpponent[primaryOpponentId]?.length ?? 0}
+                characters={allCharacters}
+                eliminated={getEliminatedForOpponent(privateState.eliminatedByOpponent, primaryOpponentId)}
+                onToggle={(charId) => onToggleEliminated(primaryOpponentId, charId)}
+                onBulkEliminate={(ids) => onBulkEliminate(primaryOpponentId, ids)}
+                onRestoreAll={() => onRestoreAllEliminated(primaryOpponentId)}
+                onShowInfo={setInfoCharacter}
+              />
+            ) : null}
           </div>
+          )}
+
+          {isMultiplayer && (
+          <div className="panel panel-board panel-lexique">
+            <div className="panel-board-header">
+              <h3 className="panel-section-title">Lexique</h3>
+            </div>
+            <CharacterEncyclopedia characters={allCharacters} onSelect={setInfoCharacter} />
+          </div>
+          )}
 
           {/* Right panel - questions & history */}
           <div className="panel panel-questions">
-            <h3 className="panel-section-title">Historique</h3>
+            <h3 className="panel-section-title">Historique des questions</h3>
             <QuestionHistory history={gameState.questionHistory ?? []} playerId={playerId} />
 
+            <h3 className="panel-section-title">Devinettes</h3>
+            <GuessHistory history={gameState.guessHistory ?? []} playerId={playerId} />
+
+            <h3 className="panel-section-title">Réponses connues</h3>
+            {isMultiplayer && (
+              <KnownAnswersPanel history={gameState.questionHistory ?? []} playerId={playerId} />
+            )}
+
             <h3 className="panel-section-title">Poser une question</h3>
+            {isMultiplayer && canAsk && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>À qui posez-vous la question ?</p>
+                <div className="player-select">
+                  {playableOpponents.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={`player-chip ${questionTarget === o.id ? 'selected' : ''}`}
+                      onClick={() => setQuestionTarget(o.id)}
+                    >
+                      {o.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {!canAsk && !mustAnswer && (
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 {pending
@@ -488,9 +583,9 @@ export default function Game({
                     </button>
                   ))}
                 </div>
-                {canAsk && selectedQuestion && (
+                {canAsk && selectedQuestion && (!isMultiplayer || questionTarget) && (
                   <button className="btn btn-primary" style={{ marginTop: '0.75rem' }} onClick={handleAsk}>
-                    Poser cette question
+                    Poser cette question{isMultiplayer && questionTarget ? ` à ${playableOpponents.find(o => o.id === questionTarget)?.name}` : ''}
                   </button>
                 )}
               </>
@@ -499,7 +594,7 @@ export default function Game({
             {isMultiplayer && questionMode === 'custom' && canAsk && (
               <div className="custom-question-form">
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                  Écrivez une question fermée (oui/non). Vos adversaires répondront manuellement.
+                  Écrivez une question fermée (oui/non). Seul le joueur ciblé répondra.
                 </p>
                 <textarea
                   className="custom-question-input"
@@ -512,10 +607,10 @@ export default function Game({
                 <button
                   className="btn btn-primary"
                   style={{ marginTop: '0.5rem' }}
-                  disabled={customQuestion.trim().length < 3}
+                  disabled={customQuestion.trim().length < 3 || !questionTarget}
                   onClick={handleAskCustom}
                 >
-                  Poser la question libre
+                  Poser la question libre{questionTarget ? ` à ${playableOpponents.find(o => o.id === questionTarget)?.name}` : ''}
                 </button>
               </div>
             )}
@@ -536,9 +631,10 @@ export default function Game({
 
       {/* Guess modal */}
       {guessModal && (() => {
-        const notEliminated = (c: Character) => !privateState.eliminated.includes(c.id);
+        const targetEliminated = privateState.eliminatedByOpponent[guessModal.targetId] ?? [];
+        const notEliminated = (c: Character) => !targetEliminated.includes(c.id);
         const targetCandidateIds = (displayCandidates[guessModal.targetId] ?? [])
-          .filter((id) => !privateState.eliminated.includes(id));
+          .filter((id) => !targetEliminated.includes(id));
         const candidateChars = targetCandidateIds
           .map((id) => allCharacters.find((c) => c.id === id))
           .filter((c): c is Character => !!c && notEliminated(c));

@@ -106,11 +106,25 @@ export const CATEGORY_LABELS: Record<CharacterCategory, string> = {
   biblique: 'Personnage biblique',
 };
 
+export interface GuessAttemptEntry {
+  id: string;
+  turnNumber: number;
+  guesserId: string;
+  guesserName: string;
+  targetPlayerId: string;
+  targetPlayerName: string;
+  guessedCharacterId: string;
+  guessedCharacterName: string;
+  success: boolean;
+}
+
 export interface QuestionHistoryEntry {
   id: string;
   turnNumber: number;
   askerId: string;
   askerName: string;
+  targetPlayerId?: string | null;
+  targetPlayerName?: string | null;
   attributeKey: AttributeKey | null;
   attributeLabel: string;
   customText?: string | null;
@@ -128,6 +142,7 @@ export interface PlayerPublic {
   isBot?: boolean;
   connected: boolean;
   guessesCorrect: string[];
+  eliminatedFromGame?: boolean;
   specialCardsUsed: SpecialCardType[];
   hasAnswered: boolean;
   answeredYes: boolean | null;
@@ -146,6 +161,8 @@ export interface GameStatePublic {
   pendingQuestion: {
     askerId: string;
     askerName: string;
+    targetPlayerId: string | null;
+    targetPlayerName: string | null;
     attributeKey: AttributeKey | null;
     attributeLabel: string;
     customText: string | null;
@@ -164,13 +181,14 @@ export interface GameStatePublic {
   } | null;
   activeCharacters: string[];
   questionHistory: QuestionHistoryEntry[];
+  guessHistory: GuessAttemptEntry[];
   aiThinking?: boolean;
 }
 
 export interface PlayerPrivate {
   characterId: string | null;
   characterName: string | null;
-  eliminated: string[];
+  eliminatedByOpponent: Record<string, string[]>;
   specialCards: SpecialCardType[];
   canAskSecondQuestion: boolean;
   canRetryTurn: boolean;

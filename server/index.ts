@@ -18,6 +18,10 @@ import {
   startGame,
   tryBeginPlaying,
 } from './gameEngine';
+import {
+  bulkEliminateForOpponent,
+  toggleEliminatedForOpponent,
+} from './elimination';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -211,18 +215,18 @@ io.on('connection', (socket: Socket) => {
     callback?.({ success: true });
   });
 
-  socket.on('askQuestion', (attributeKey: import('../src/types').AttributeKey) => {
+  socket.on('askQuestion', (attributeKey: import('../src/types').AttributeKey, targetPlayerId?: string) => {
     const room = getRoomFromSocket(socket);
     if (!room || room.status !== 'playing') return;
     const playerId = socketToPlayer.get(socket.id)!;
-    ctx.performAskQuestion(room, playerId, attributeKey);
+    ctx.performAskQuestion(room, playerId, attributeKey, targetPlayerId);
   });
 
-  socket.on('askCustomQuestion', (text: string) => {
+  socket.on('askCustomQuestion', (text: string, targetPlayerId?: string) => {
     const room = getRoomFromSocket(socket);
     if (!room || room.status !== 'playing') return;
     const playerId = socketToPlayer.get(socket.id)!;
-    ctx.performAskCustomQuestion(room, playerId, text);
+    ctx.performAskCustomQuestion(room, playerId, text, targetPlayerId);
   });
 
   socket.on('submitAnswer', (answer: boolean) => {
@@ -243,48 +247,45 @@ io.on('connection', (socket: Socket) => {
     ctx.performSpecialCard(room, playerId, cardType, targetPlayerId, attributeKey);
   });
 
-  socket.on('toggleEliminated', (characterId: string) => {
+  socket.on('toggleEliminated', (opponentId: string, characterId: string) => {
     const room = getRoomFromSocket(socket);
     if (!room || room.status !== 'playing') return;
 
     const playerId = socketToPlayer.get(socket.id)!;
     const player = room.players.get(playerId)!;
+    if (opponentId === playerId || !room.playerOrder.includes(opponentId)) return;
 
-    if (player.eliminated.includes(characterId)) {
-      player.eliminated = player.eliminated.filter((id) => id !== characterId);
-    } else {
-      player.eliminated.push(characterId);
-    }
-
+    toggleEliminatedForOpponent(player, opponentId, characterId);
     socket.emit('roomUpdate', buildRoomPayload(room, playerId));
   });
 
-  socket.on('bulkEliminate', (characterIds: string[]) => {
+  socket.on('bulkEliminate', (opponentId: string, characterIds: string[]) => {
     const room = getRoomFromSocket(socket);
     if (!room || room.status !== 'playing') return;
 
     const playerId = socketToPlayer.get(socket.id)!;
     const player = room.players.get(playerId)!;
-    const validIds = new Set(
-      characterIds.filter((id) => room.activeCharacterIds.includes(id)),
-    );
+    if (opponentId === playerId || !room.playerOrder.includes(opponentId)) return;
 
-    for (const id of validIds) {
-      if (!player.eliminated.includes(id)) {
-        player.eliminated.push(id);
+    const validIds = characterIds.filter((id) => room.activeCharacterIds.includes(id));
+    bulkEliminateForOpponent(player, opponentId, validIds);
+    socket.emit('roomUpdate', buildRoomPayload(room, playerId));
+  });
+
+  socket.on('restoreAllEliminated', (opponentId?: string) => {
+    const room = getRoomFromSocket(socket);
+    if (!room || room.status !== 'playing') return;
+
+    const playerId = socketToPlayer.get(socket.id)!;
+    const player = room.players.get(playerId)!;
+
+    if (opponentId && opponentId !== playerId && room.playerOrder.includes(opponentId)) {
+      player.eliminatedByOpponent[opponentId] = [];
+    } else {
+      for (const oppId of Object.keys(player.eliminatedByOpponent)) {
+        player.eliminatedByOpponent[oppId] = [];
       }
     }
-
-    socket.emit('roomUpdate', buildRoomPayload(room, playerId));
-  });
-
-  socket.on('restoreAllEliminated', () => {
-    const room = getRoomFromSocket(socket);
-    if (!room || room.status !== 'playing') return;
-
-    const playerId = socketToPlayer.get(socket.id)!;
-    const player = room.players.get(playerId)!;
-    player.eliminated = [];
 
     socket.emit('roomUpdate', buildRoomPayload(room, playerId));
   });
@@ -299,6 +300,11 @@ io.on('connection', (socket: Socket) => {
     const playerId = socketToPlayer.get(socket.id)!;
     const player = room.players.get(playerId)!;
     const target = room.players.get(targetPlayerId);
+
+    if (!target?.characterId) {
+      callback({ success: false, message: 'Joueur introuvable.' });
+      return;
+    }
 
     if (room.playerOrder[room.currentTurnIndex] !== playerId) {
       callback({ success: false, message: 'Ce n\'est pas votre tour.' });
@@ -315,8 +321,8 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    if (!target?.characterId) {
-      callback({ success: false, message: 'Joueur introuvable.' });
+    if (target.eliminatedFromGame) {
+      callback({ success: false, message: 'Ce joueur est déjà éliminé.' });
       return;
     }
 

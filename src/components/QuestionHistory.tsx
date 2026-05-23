@@ -27,7 +27,11 @@ export default function QuestionHistory({ history, playerId }: QuestionHistoryPr
             {entry.isConcile && <span className="history-concile">⛪ Concile</span>}
             {entry.isCustom && <span className="history-custom">✏️ Libre</span>}
           </div>
-          <p className="history-question">« {entry.attributeLabel} »</p>
+          <p className="history-question">
+            {entry.targetPlayerName && !entry.isConcile
+              ? <>À <strong>{entry.targetPlayerName}</strong> : « {entry.attributeLabel} »</>
+              : <>« {entry.attributeLabel} »</>}
+          </p>
           {!entry.blocked && Object.keys(entry.answers).length > 0 && (
             <div className="history-answers">
               {Object.entries(entry.answers).map(([pid, val]) => (

@@ -1,20 +1,20 @@
 import type { Character } from '../types';
 
 /**
- * Candidats affichés pour un adversaire :
- * déduction serveur ∩ personnages encore actifs sur votre plateau (non éliminés).
+ * Candidats affichés par adversaire :
+ * déduction serveur ∩ personnages non éliminés sur le plateau de cet adversaire.
  */
 export function computeOpponentCandidates(
   opponents: { id: string }[],
   activeCharacterIds: string[],
   ownCharacterId: string | null,
-  eliminated: string[],
+  eliminatedByOpponent: Record<string, string[]>,
   serverKnowledge: Record<string, string[]>,
 ): Record<string, string[]> {
-  const elim = new Set(eliminated);
   const result: Record<string, string[]> = {};
 
   for (const opp of opponents) {
+    const elim = new Set(eliminatedByOpponent[opp.id] ?? []);
     const deduced = serverKnowledge[opp.id];
     const basePool = deduced?.length
       ? deduced
@@ -25,20 +25,6 @@ export function computeOpponentCandidates(
     );
   }
 
-  return result;
-}
-
-/** @deprecated Utiliser computeOpponentCandidates */
-export function filterCandidatesByEliminated(
-  candidates: Record<string, string[]>,
-  eliminated: string[],
-): Record<string, string[]> {
-  if (eliminated.length === 0) return candidates;
-  const elim = new Set(eliminated);
-  const result: Record<string, string[]> = {};
-  for (const [oppId, ids] of Object.entries(candidates)) {
-    result[oppId] = ids.filter((id) => !elim.has(id));
-  }
   return result;
 }
 
@@ -71,4 +57,29 @@ export function resolveOpponentCharactersForAll(
     result[opp.id] = resolved[opp.id] ?? [];
   }
   return result;
+}
+
+/** Plateau solo / vs IA : premier adversaire ou fusion de tous les plateaux */
+export function getPrimaryOpponentId(
+  opponents: { id: string }[],
+): string | null {
+  return opponents[0]?.id ?? null;
+}
+
+export function getEliminatedForOpponent(
+  eliminatedByOpponent: Record<string, string[]>,
+  opponentId: string | null,
+): string[] {
+  if (!opponentId) return [];
+  return eliminatedByOpponent[opponentId] ?? [];
+}
+
+export function mergeAllEliminated(
+  eliminatedByOpponent: Record<string, string[]>,
+): string[] {
+  const set = new Set<string>();
+  for (const ids of Object.values(eliminatedByOpponent)) {
+    for (const id of ids) set.add(id);
+  }
+  return [...set];
 }

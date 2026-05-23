@@ -10,6 +10,7 @@ import {
   initPlayerKnowledge,
   type PlayerKnowledge,
 } from './deduction';
+import { syncEliminationsFromKnowledge } from './elimination';
 
 const BOT_NAMES = ['Sœur Thérèse IA', 'Frère François IA', 'Monseigneur IA'];
 
@@ -24,10 +25,11 @@ export function createBotPlayer(name: string): Player {
     isBot: true,
     connected: true,
     characterId: null,
-    eliminated: [],
+    eliminatedByOpponent: {},
     specialCards: [],
     specialCardsUsed: [],
     guessesCorrect: [],
+    eliminatedFromGame: false,
     canAskSecondQuestion: false,
     canRetryTurn: false,
     hasGuessedThisTurn: false,
@@ -83,26 +85,9 @@ function pickRevelationTarget(knowledge: PlayerKnowledge): { oppId: string; attr
   return null;
 }
 
-function syncEliminationsFromKnowledge(room: Room, playerId: string, knowledge: PlayerKnowledge) {
+function syncEliminationsFromKnowledgeForPlayer(room: Room, playerId: string, knowledge: PlayerKnowledge) {
   const player = room.players.get(playerId)!;
-  const elim = new Set(player.eliminated);
-
-  for (const id of room.activeCharacterIds) {
-    if (id === player.characterId) {
-      elim.add(id);
-      continue;
-    }
-    let stillPossible = false;
-    for (const possibles of knowledge.possibleByOpponent.values()) {
-      if (possibles.has(id)) {
-        stillPossible = true;
-        break;
-      }
-    }
-    if (!stillPossible) elim.add(id);
-  }
-
-  player.eliminated = [...elim];
+  syncEliminationsFromKnowledge(room, player, knowledge);
 }
 
 function clearAiTimer(roomCode: string) {
@@ -229,7 +214,7 @@ export function onQuestionResolvedForKnowledge(
     const knowledge = room.playerKnowledge.get(playerId);
     if (!knowledge) continue;
     applyAnswersToKnowledge(knowledge, attributeKey, answers);
-    syncEliminationsFromKnowledge(room, playerId, knowledge);
+    syncEliminationsFromKnowledgeForPlayer(room, playerId, knowledge);
   }
 }
 
@@ -244,7 +229,7 @@ export function onRevelationForKnowledge(
   if (!knowledge) return;
 
   applyRevelationToKnowledge(knowledge, targetId, attributeKey, value);
-  syncEliminationsFromKnowledge(room, playerId, knowledge);
+  syncEliminationsFromKnowledgeForPlayer(room, playerId, knowledge);
 }
 
 export function initAllPlayerKnowledge(room: Room) {
